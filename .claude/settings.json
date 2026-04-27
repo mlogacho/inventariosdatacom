@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(2>&1)",
+      "Bash(docker cp *)"
+    ]
+  }
+}

@@ -40,6 +40,11 @@ class FacilitySerializer(serializers.Serializer):
         required=False,
         default=list
     )
+    servicios = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list
+    )
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

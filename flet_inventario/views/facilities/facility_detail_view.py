@@ -9,7 +9,6 @@ import os
 import tempfile
 import requests as _requests
 
-from core.api_client import APIClient
 from core.session import Session
 from core.theme import ThemeColors, JetBrainsTheme
 from components.status_badge import status_badge
@@ -149,26 +148,64 @@ def facility_detail_view(page: ft.Page, navigate, facility_id=None):
         is_editable = (estado == "en_proceso")
         rows        = []
 
+        def _dest_props(val):
+            if val == "bodega":
+                return "⟵  BODEGA", ThemeColors.STATE_RESERVED
+            return "✓  CLIENTE", ThemeColors.STATE_INSTALLED
+
         for it in items:
             idata    = it.get("item") or it
             iid      = str(it.get("item_id") or idata.get("id", ""))
             curr_dest = state["destinations"].get(iid, "cliente")
 
-            dest_widget = (
-                ft.Dropdown(
-                    value=curr_dest,
-                    options=[ft.dropdown.Option("cliente", "CLIENTE"), ft.dropdown.Option("bodega", "BODEGA")],
-                    width=130, height=35, text_size=11,
-                    on_change=lambda e, _id=iid: handle_dest_change(_id, e.control.value),
-                    **JetBrainsTheme.input_style()
-                ) if is_editable else ft.Container(
-                    content=ft.Text("CLIENTE" if curr_dest == "cliente" else "BODEGA",
-                                    size=11, weight="bold", color=ThemeColors.ACCENT_BLUE),
+            if is_editable:
+                lbl, col = _dest_props(curr_dest)
+                badge_txt = ft.Text(lbl, size=10, weight="bold", color=col)
+                badge_box = ft.Container(
+                    content=badge_txt,
+                    padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                    border_radius=6,
+                    bgcolor=ft.colors.with_opacity(0.15, col),
+                    border=ft.border.all(1, ft.colors.with_opacity(0.5, col)),
+                )
+
+                def _on_dest(e, _id=iid, _bt=badge_txt, _bb=badge_box):
+                    val = e.control.value
+                    handle_dest_change(_id, val)
+                    l, c = _dest_props(val)
+                    _bt.value = l
+                    _bt.color = c
+                    _bb.bgcolor = ft.colors.with_opacity(0.15, c)
+                    _bb.border = ft.border.all(1, ft.colors.with_opacity(0.5, c))
+                    _bb.update()
+
+                dest_widget = ft.Column([
+                    badge_box,
+                    ft.Dropdown(
+                        value=curr_dest,
+                        options=[
+                            ft.dropdown.Option("cliente", "CLIENTE"),
+                            ft.dropdown.Option("bodega",  "BODEGA"),
+                        ],
+                        width=130,
+                        text_size=12,
+                        color=ft.colors.WHITE,
+                        bgcolor=ft.colors.with_opacity(0.08, ft.colors.BLACK),
+                        border_color=ft.colors.with_opacity(0.25, ft.colors.WHITE),
+                        focused_border_color=ThemeColors.ACCENT_BLUE,
+                        border_radius=8,
+                        content_padding=ft.padding.symmetric(horizontal=10, vertical=8),
+                        on_change=_on_dest,
+                    ),
+                ], spacing=5, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+            else:
+                lbl, col = _dest_props(curr_dest)
+                dest_widget = ft.Container(
+                    content=ft.Text(lbl, size=11, weight="bold", color=ft.colors.WHITE),
+                    bgcolor=col,
                     padding=ft.padding.symmetric(horizontal=12, vertical=8),
                     border_radius=8,
-                    border=ft.border.all(1, ThemeColors.ACCENT_BLUE),
                 )
-            )
 
             row_controls = [
                 ft.Icon(ft.icons.DEVICES_OTHER_ROUNDED, color=ThemeColors.ACCENT_BLUE, size=24),
@@ -402,7 +439,7 @@ def facility_detail_view(page: ft.Page, navigate, facility_id=None):
 
     # ─── Handlers ────────────────────────────────────────────────────────────
     def handle_remove_resource(iid, category, current_state):
-        def on_confirm(ev):
+        def on_confirm(_):
             # 1. ACTUALIZACIÓN OPTIMISTA (UI Local inmediata)
             f = state["facility"]
             if category == "equipo":
@@ -532,7 +569,7 @@ def facility_detail_view(page: ft.Page, navigate, facility_id=None):
                 except Exception as ex:
                     show_snack(page, f"Error: {ex}", True)
 
-            def on_add_confirm(e):
+            def on_add_confirm(_):
                 if not item_dropdown.value:
                     show_snack(page, "Por favor, selecciona un ítem de la lista.", True)
                     return
@@ -588,8 +625,8 @@ def facility_detail_view(page: ft.Page, navigate, facility_id=None):
         payload = [{"item_id": k, "destino": v} for k, v in state["destinations"].items()]
         threading.Thread(target=lambda: update_destinations(facility_id, payload), daemon=True).start()
 
-    def handle_start(e):
-        def go(ev):
+    def handle_start(_):
+        def go(__):
             try:
                 start_facility(facility_id)
                 page.dialog.open = False
@@ -607,8 +644,8 @@ def facility_detail_view(page: ft.Page, navigate, facility_id=None):
         page.dialog.open = True
         page.update()
 
-    def handle_finish(e):
-        def go(ev):
+    def handle_finish(_):
+        def go(__):
             page.dialog.open = False
             page.update()
             try:
@@ -659,7 +696,7 @@ def facility_detail_view(page: ft.Page, navigate, facility_id=None):
             btns.append(ft.ElevatedButton("FINALIZAR", icon=ft.icons.CHECK_CIRCLE,
                                            bgcolor=ThemeColors.STATE_INSTALLED, on_click=handle_finish, height=45))
         if estado == "finalizada":
-            btns.append(ft.ElevatedButton("PDF REPORTE", icon=ft.icons.PICTURE_AS_PDF,
+            btns.append(ft.ElevatedButton("ACTA DE ENTREGA", icon=ft.icons.PICTURE_AS_PDF,
                                            bgcolor=ft.colors.RED_700, on_click=handle_pdf, height=45))
 
         header = ft.Container(

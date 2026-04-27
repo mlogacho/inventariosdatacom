@@ -218,6 +218,9 @@ def seed():
         if "herramienta" in cat_name: t_item = "herramienta"
         elif "material" in cat_name: t_item = "material"
 
+        # Herramientas y materiales no tienen INGRESO_BODEGA en su state machine
+        estado_inicial = "INGRESO_BODEGA" if t_item == "equipo" else "STOCK"
+
         item = Item(
             codigo=data["codigo"],
             nombre=data["nombre"],
@@ -225,19 +228,22 @@ def seed():
             serial=data["serial"],
             criticidad=data["crit"],
             tipo_item=t_item,
-            estado="INGRESO_BODEGA",
+            estado=estado_inicial,
             ubicacion_actual_id=data["bodega"].id,
         ).save()
 
         item = Item.objects(id=item.id).first()
-        process_asset_transition(
-            item=item,
-            next_state="STOCK",
-            user=admin,
-            notes="Ingreso inicial — compra de activos.",
-            ip_address="127.0.0.1",
-            module_source="SEEDER",
-        )
+
+        # Solo los equipos requieren la transición INGRESO_BODEGA → STOCK
+        if t_item == "equipo":
+            process_asset_transition(
+                item=item,
+                next_state="STOCK",
+                user=admin,
+                notes="Ingreso inicial — compra de activos.",
+                ip_address="127.0.0.1",
+                module_source="SEEDER",
+            )
 
     # ──────────────────────────────────────────
     # RESUMEN

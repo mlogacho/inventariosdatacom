@@ -58,6 +58,10 @@ class Facility(BaseDocument):
     #             bodega_retorno_id, observaciones}
     consumibles = me.ListField(me.DictField())
 
+    # Sección 5: Servicios entregados al cliente
+    # Cada dict: {detalle, descripcion}
+    servicios = me.ListField(me.DictField())
+
     # Observaciones generales
     observaciones = me.StringField()
 

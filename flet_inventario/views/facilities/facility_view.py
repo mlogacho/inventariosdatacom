@@ -220,8 +220,14 @@ def facility_form_view(page: ft.Page, navigate):
         items_planificados = []   # [{item_id, nombre, codigo, serial, categoria, destino}]
         herramientas_list  = []   # [{item_id, nombre, codigo, cantidad, observaciones}]
         consumibles_list   = []   # [{item_id, nombre, codigo, unidad, cantidad_reservada, obs}]
+        servicios_list     = []   # [{detalle, descripcion}]
 
         if facility:
+            for sv in facility.get("servicios", []) or []:
+                servicios_list.append({
+                    "detalle":     sv.get("detalle", ""),
+                    "descripcion": sv.get("descripcion", ""),
+                })
             for it in facility.get("items_planificados", []):
                 item_data = it.get("item", it)
                 items_planificados.append({
@@ -301,10 +307,77 @@ def facility_form_view(page: ft.Page, navigate):
 
         date_picker.on_change = on_date_change
 
+        # ── SECCIÓN 5 — SERVICIOS ENTREGADOS ─────────────────────────────────
+        servicios_col  = ft.Column(spacing=8, scroll="auto")
+        serv_detalle_tf = ft.TextField(
+            label="Servicio",
+            hint_text="Ej: Configuración de red, Instalación de cámaras…",
+            **JetBrainsTheme.input_style(), height=55,
+            disabled=is_locked,
+        )
+        serv_desc_tf = ft.TextField(
+            label="Descripción",
+            hint_text="Descripción breve de lo realizado…",
+            multiline=True, min_lines=3,
+            **JetBrainsTheme.input_style(),
+            disabled=is_locked,
+        )
+
+        def render_servicios():
+            servicios_col.controls = []
+            for i, sv in enumerate(servicios_list):
+                servicios_col.controls.append(ft.Container(
+                    bgcolor=ft.colors.with_opacity(0.04, ft.colors.WHITE),
+                    padding=12, border_radius=8,
+                    border=ft.border.all(1, ft.colors.with_opacity(0.08, ft.colors.WHITE)),
+                    content=ft.Row([
+                        ft.Icon(ft.icons.HANDSHAKE_ROUNDED, size=16, color=ThemeColors.ACCENT_BLUE),
+                        ft.Column([
+                            ft.Text(sv["detalle"], weight="bold", size=13,
+                                    color=ThemeColors.TEXT_PRIMARY),
+                            ft.Text(sv["descripcion"], size=11,
+                                    color=ThemeColors.TEXT_SECONDARY,
+                                    overflow=ft.TextOverflow.ELLIPSIS, max_lines=2),
+                        ], expand=True, spacing=2),
+                        ft.IconButton(
+                            ft.icons.REMOVE_CIRCLE_OUTLINE,
+                            icon_color=ft.colors.RED_400, icon_size=18,
+                            on_click=lambda e, idx=i: _remove_servicio(idx),
+                            visible=not is_locked,
+                            tooltip="Eliminar servicio",
+                        ),
+                    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.START)
+                ))
+            update_summary()
+            try: page.update()
+            except: pass
+
+        def _remove_servicio(idx):
+            if idx < len(servicios_list):
+                servicios_list.pop(idx)
+                render_servicios()
+
+        def add_servicio(_):
+            detalle = serv_detalle_tf.value.strip()
+            desc    = serv_desc_tf.value.strip()
+            if not detalle:
+                show_snack(page, "El detalle del servicio es obligatorio", True)
+                return
+            servicios_list.append({"detalle": detalle, "descripcion": desc})
+            serv_detalle_tf.value = ""
+            serv_desc_tf.value    = ""
+            render_servicios()
+
         # ── SECCIÓN 2 — EQUIPOS (patrón original sin cambios) ─────────────────
         summary_col = ft.Column(spacing=5)
         items_col   = ft.Column(spacing=8, scroll="auto")
         item_dd     = ft.Dropdown(label="Seleccionar Activo en STOCK", **JetBrainsTheme.input_style(), expand=True)
+
+        def _badge(count, color):
+            return ft.Container(
+                content=ft.Text(str(count), size=11, color=ft.colors.WHITE, weight="bold"),
+                bgcolor=color, padding=ft.padding.symmetric(horizontal=8, vertical=2), border_radius=10,
+            )
 
         def update_summary():
             total = len(items_planificados) + len(herramientas_list) + len(consumibles_list)
@@ -312,18 +385,19 @@ def facility_form_view(page: ft.Page, navigate):
                 ft.Text("Resumen de Recursos", size=12, weight="bold", color=ThemeColors.TEXT_SECONDARY),
                 ft.Container(content=ft.Row([
                     ft.Text("Equipos", size=12, expand=True),
-                    ft.Container(content=ft.Text(str(len(items_planificados)), size=11, color=ft.colors.WHITE, weight="bold"),
-                                 bgcolor=ThemeColors.ACCENT_BLUE, padding=ft.padding.symmetric(horizontal=8, vertical=2), border_radius=10)
+                    _badge(len(items_planificados), ThemeColors.ACCENT_BLUE),
                 ]), padding=ft.padding.symmetric(vertical=3)),
                 ft.Container(content=ft.Row([
                     ft.Text("Herramientas", size=12, expand=True),
-                    ft.Container(content=ft.Text(str(len(herramientas_list)), size=11, color=ft.colors.WHITE, weight="bold"),
-                                 bgcolor="#FF8F00", padding=ft.padding.symmetric(horizontal=8, vertical=2), border_radius=10)
+                    _badge(len(herramientas_list), "#FF8F00"),
                 ]), padding=ft.padding.symmetric(vertical=3)),
                 ft.Container(content=ft.Row([
                     ft.Text("Materiales", size=12, expand=True),
-                    ft.Container(content=ft.Text(str(len(consumibles_list)), size=11, color=ft.colors.WHITE, weight="bold"),
-                                 bgcolor=ThemeColors.STATE_STOCK, padding=ft.padding.symmetric(horizontal=8, vertical=2), border_radius=10)
+                    _badge(len(consumibles_list), ThemeColors.STATE_STOCK),
+                ]), padding=ft.padding.symmetric(vertical=3)),
+                ft.Container(content=ft.Row([
+                    ft.Text("Servicios", size=12, expand=True),
+                    _badge(len(servicios_list), "#7C3AED"),
                 ]), padding=ft.padding.symmetric(vertical=3)),
             ]
             if total > 0:
@@ -665,6 +739,10 @@ def facility_form_view(page: ft.Page, navigate):
                         "observaciones":    c.get("observaciones", ""),
                     }
                     for c in consumibles_list
+                ],
+                "servicios": [
+                    {"detalle": sv["detalle"], "descripcion": sv["descripcion"]}
+                    for sv in servicios_list
                 ],
             }
             try:
@@ -1017,6 +1095,7 @@ def facility_form_view(page: ft.Page, navigate):
         render_items()
         render_herr()
         render_cons()
+        render_servicios()
         threading.Timer(0.2, load_data).start()
 
         # ── LAYOUT FINAL ──────────────────────────────────────────────────────
@@ -1042,6 +1121,54 @@ def facility_form_view(page: ft.Page, navigate):
                             dir_tf,
                             obs_tf,
                         ], spacing=20, scroll="auto")
+                    )
+                ),
+                ft.Tab(
+                    text="Servicios Entregados",
+                    icon=ft.icons.HANDSHAKE_ROUNDED,
+                    content=ft.Container(
+                        padding=20,
+                        content=ft.Column([
+                            # ── Formulario de ingreso ──────────────────────────
+                            ft.Container(
+                                visible=not is_locked,
+                                bgcolor=ft.colors.with_opacity(0.05, ft.colors.WHITE),
+                                padding=16,
+                                border_radius=10,
+                                border=ft.border.all(1, ft.colors.with_opacity(0.1, ft.colors.WHITE)),
+                                content=ft.Column([
+                                    ft.Row([
+                                        ft.Icon(ft.icons.ADD_TASK_ROUNDED, color="#7C3AED", size=16),
+                                        ft.Text("Nuevo servicio", size=12, weight="bold",
+                                                color=ThemeColors.TEXT_SECONDARY),
+                                    ], spacing=8),
+                                    serv_detalle_tf,
+                                    serv_desc_tf,
+                                    ft.Row([
+                                        ft.Container(expand=True),
+                                        ft.ElevatedButton(
+                                            "Agregar",
+                                            icon=ft.icons.ADD_ROUNDED,
+                                            on_click=add_servicio,
+                                            style=ft.ButtonStyle(
+                                                bgcolor="#7C3AED",
+                                                color=ft.colors.WHITE,
+                                                shape=ft.RoundedRectangleBorder(radius=8),
+                                                padding=ft.padding.symmetric(horizontal=20, vertical=10),
+                                            ),
+                                        ),
+                                    ]),
+                                ], spacing=12),
+                            ),
+                            # ── Lista de servicios registrados ─────────────────
+                            ft.Divider(height=1, color=ft.colors.with_opacity(0.06, ft.colors.WHITE)),
+                            ft.Row([
+                                ft.Icon(ft.icons.LIST_ALT_ROUNDED, size=14, color=ThemeColors.TEXT_SECONDARY),
+                                ft.Text("Servicios registrados", size=11, weight="bold",
+                                        color=ThemeColors.TEXT_SECONDARY),
+                            ], spacing=6),
+                            servicios_col,
+                        ], spacing=14, scroll=ft.ScrollMode.AUTO)
                     )
                 ),
                 ft.Tab(
@@ -1078,7 +1205,7 @@ def facility_form_view(page: ft.Page, navigate):
                     )
                 ),
                 ft.Tab(
-                    text="Materiales / Consumibles",
+                    text="Materiales",
                     icon=ft.icons.INVENTORY_2_ROUNDED,
                     content=ft.Container(
                         padding=20,

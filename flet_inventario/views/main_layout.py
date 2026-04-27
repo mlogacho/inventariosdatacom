@@ -95,71 +95,117 @@ class MainLayout(ft.Container):
 
         # (Label, Icon, Key, Required Permission)
         menu_items = [
-            ("Dashboard", ft.icons.DASHBOARD, "dashboard", None),
-            ("Instalaciones", ft.icons.BUILD, "facilities", "facility:read"),
-            ("Ítems (Activos)", ft.icons.INVENTORY_2, "items", "item:read"),
-            ("Movimientos", ft.icons.SYNC_ALT, "movements", "movement:read"),
-            ("Clientes", ft.icons.PEOPLE, "customers", "customer:read"),
-            ("Proveedores", ft.icons.LOCAL_SHIPPING, "suppliers", "supplier:read"),
-            ("Vehículos", ft.icons.DIRECTIONS_CAR, "vehicles", "vehicle:read"),
-            ("Bodegas", ft.icons.WAREHOUSE, "stores", "store:read"),
-            ("Usuarios", ft.icons.ADMIN_PANEL_SETTINGS, "users", "user:read"),
+            ("Dashboard",       ft.icons.DASHBOARD,            "dashboard",  None),
+            ("Instalaciones",   ft.icons.BUILD_CIRCLE,         "facilities", "facility:read"),
+            ("Ítems (Activos)", ft.icons.INVENTORY_2,          "items",      "item:read"),
+            ("Movimientos",     ft.icons.SYNC_ALT,             "movements",  "movement:read"),
+            ("Clientes",        ft.icons.PEOPLE_ALT,           "customers",  "customer:read"),
+            ("Proveedores",     ft.icons.LOCAL_SHIPPING,       "suppliers",  "supplier:read"),
+            ("Vehículos",       ft.icons.DIRECTIONS_CAR_FILLED,"vehicles",   "vehicle:read"),
+            ("Bodegas",         ft.icons.WAREHOUSE,            "stores",     "store:read"),
+            ("Usuarios",        ft.icons.MANAGE_ACCOUNTS,      "users",      "user:read"),
         ]
-        
+
+        # ── Logo / Marca ──────────────────────────────────────────────────────
         sidebar_controls = [
             ft.Container(
-                padding=ft.padding.all(30),
+                padding=ft.padding.only(left=20, right=20, top=28, bottom=20),
                 content=ft.Row([
-                    ft.Container(width=10, height=25, bgcolor=ThemeColors.ACCENT_BLUE, border_radius=5),
-                    ft.Text("INVENTARIO", size=18, weight="black", color=ThemeColors.TEXT_PRIMARY),
-                ], spacing=10)
-            )
+                    ft.Container(
+                        width=8, height=30,
+                        bgcolor=ThemeColors.ACCENT_BLUE,
+                        border_radius=4,
+                    ),
+                    ft.Column([
+                        ft.Text("INVENTARIO", size=16, weight="black",
+                                color=ThemeColors.TEXT_PRIMARY),
+                        ft.Text("Sistema de Control", size=9,
+                                color=ThemeColors.TEXT_SECONDARY),
+                    ], spacing=0),
+                ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ),
+            ft.Container(
+                height=1,
+                bgcolor=ft.colors.with_opacity(0.08, ft.colors.WHITE),
+                margin=ft.padding.symmetric(horizontal=16),
+            ),
+            ft.Container(height=8),
         ]
-        
+
         for name, icon, key, perm in menu_items:
-            # Validar permisos
             if perm and not can_access(rol, perm):
                 continue
 
-            # Seleccionar el ítem activo comparando títulos
-            is_active = name in self.nav_title or (self.nav_title == "Menú Principal" and key == "dashboard")
-            
+            is_active = (name in self.nav_title or
+                         (self.nav_title == "Menú Principal" and key == "dashboard"))
+
+            icon_color = ThemeColors.ACCENT_BLUE if is_active else ThemeColors.TEXT_SECONDARY
+            text_color = ThemeColors.TEXT_PRIMARY if is_active else ThemeColors.TEXT_SECONDARY
+
             sidebar_controls.append(
                 ft.Container(
-                    padding=ft.padding.symmetric(horizontal=20, vertical=12),
-                    margin=ft.padding.symmetric(horizontal=15),
+                    padding=ft.padding.symmetric(horizontal=14, vertical=10),
+                    margin=ft.padding.symmetric(horizontal=10, vertical=1),
                     border_radius=10,
-                    bgcolor=ft.colors.with_opacity(0.1, ThemeColors.ACCENT_BLUE) if is_active else ft.colors.TRANSPARENT,
+                    bgcolor=(ft.colors.with_opacity(0.12, ThemeColors.ACCENT_BLUE)
+                             if is_active else ft.colors.TRANSPARENT),
+                    border=(ft.border.all(1, ft.colors.with_opacity(0.2, ThemeColors.ACCENT_BLUE))
+                            if is_active else None),
                     ink=True,
                     on_click=lambda e, k=key: self.navigate_by_key(k),
                     content=ft.Row([
-                        ft.Icon(icon, color=ThemeColors.ACCENT_BLUE if is_active else ThemeColors.TEXT_SECONDARY, size=20),
-                        ft.Text(name, color=ThemeColors.TEXT_PRIMARY if is_active else ThemeColors.TEXT_SECONDARY, 
-                               size=14, weight="w500" if is_active else "normal")
-                    ], spacing=15)
+                        # Contenedor de icono con fondo sutil
+                        ft.Container(
+                            width=34, height=34,
+                            border_radius=9,
+                            bgcolor=(ft.colors.with_opacity(0.18, ThemeColors.ACCENT_BLUE)
+                                     if is_active
+                                     else ft.colors.with_opacity(0.06, ft.colors.WHITE)),
+                            alignment=ft.alignment.center,
+                            content=ft.Icon(icon, color=icon_color, size=18),
+                        ),
+                        ft.Text(name, color=text_color, size=13,
+                                weight="w600" if is_active else "normal",
+                                max_lines=1,
+                                overflow=ft.TextOverflow.ELLIPSIS),
+                    ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
                 )
             )
-            
+
         sidebar_controls.append(ft.Container(expand=True))
-        
-        # Logout
+
+        # ── Cerrar Sesión ─────────────────────────────────────────────────────
         sidebar_controls.append(
             ft.Container(
-                padding=ft.padding.symmetric(horizontal=20, vertical=12),
-                margin=ft.padding.only(left=15, right=15, bottom=30),
-                border_radius=10,
-                on_click=lambda e: self.navigate("logout"),
-                content=ft.Row([
-                    ft.Icon(ft.icons.LOGOUT, color=ft.colors.RED_400, size=20),
-                    ft.Text("Cerrar Sesión", color=ft.colors.RED_400, size=14)
-                ], spacing=15)
+                height=1,
+                bgcolor=ft.colors.with_opacity(0.08, ft.colors.WHITE),
+                margin=ft.padding.symmetric(horizontal=16),
             )
         )
-        
+        sidebar_controls.append(
+            ft.Container(
+                padding=ft.padding.symmetric(horizontal=14, vertical=10),
+                margin=ft.padding.only(left=10, right=10, top=6, bottom=24),
+                border_radius=10,
+                ink=True,
+                on_click=lambda e: self.navigate("logout"),
+                content=ft.Row([
+                    ft.Container(
+                        width=34, height=34, border_radius=9,
+                        bgcolor=ft.colors.with_opacity(0.12, ft.colors.RED_400),
+                        alignment=ft.alignment.center,
+                        content=ft.Icon(ft.icons.LOGOUT,
+                                        color=ft.colors.RED_400, size=18),
+                    ),
+                    ft.Text("Cerrar Sesión", color=ft.colors.RED_400, size=13),
+                ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            )
+        )
+
         return ft.Container(
-            width=200,
+            width=220,
             bgcolor=ThemeColors.BG_SURFACE_NAV,
-            content=ft.Column(sidebar_controls, spacing=5)
+            content=ft.Column(sidebar_controls, spacing=0, expand=True),
         )
 
     def navigate_by_key(self, key):
