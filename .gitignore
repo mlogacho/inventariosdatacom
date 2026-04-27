@@ -1,0 +1,61 @@
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+wheels/
+.eggs/
+pip-wheel-metadata/
+
+# ─── Entornos virtuales ───────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.env.bak
+
+# ─── Variables de entorno (secretos) ─────────────────────────────────────────
+.env
+.env.*
+!.env.example
+inventario-mongo/backend/.env.dev
+
+# ─── Django ───────────────────────────────────────────────────────────────────
+inventario-mongo/backend/db.sqlite3
+inventario-mongo/backend/staticfiles/
+inventario-mongo/backend/media/
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+.docker/
+
+# ─── Flet / Desktop ──────────────────────────────────────────────────────────
+flet_inventario/.flet/
+flet_inventario/assets/uploads/
+
+# ─── IDEs y editores ──────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ─── Sistema operativo ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Reportes / PDFs generados ───────────────────────────────────────────────
+*.pdf
+
+# ─── Pytest / Coverage ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/

@@ -1,0 +1,32 @@
+# ============================================================
+# Backend Requirements — Sistema de Inventario
+# ISO 27001 A.12.1.2 — Gestión de cambios: versiones pineadas
+# V-15 Fix: Versiones exactas para garantizar reproducibilidad y seguridad
+# ============================================================
+
+# Django y DRF
+Django==5.0.4
+djangorestframework==3.15.1
+
+# JWT personalizado (NO usar djangorestframework-simplejwt — sistema propio)
+PyJWT==2.8.0
+
+# MongoDB ORM
+# NOTA: pymongo debe ser <4.7 para compatibilidad con mongoengine 0.28.2
+# pymongo 4.7+ eliminó APIs internas que mongoengine necesita
+pymongo==4.6.3
+mongoengine==0.28.2
+
+# Variables de entorno
+django-environ==0.11.2
+python-dotenv==1.0.1
+
+# CORS
+django-cors-headers==4.3.1
+
+# Hashing de contraseñas mejorado (ISO 27001 A.10.1)
+# argon2-cffi provee Argon2, ganador de Password Hashing Competition 2015
+argon2-cffi==23.1.0
+
+# Generación de Reportes PDF (ISO 9001 8.5 — Información documentada)
+reportlab==4.0.0

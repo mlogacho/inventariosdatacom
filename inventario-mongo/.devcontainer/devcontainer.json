@@ -1,0 +1,13 @@
+{
+  "name": "Django (Compose Existing)",
+
+  "dockerComposeFile": [
+    "../docker-compose.yml"
+  ],
+
+  "service": "backend",
+
+  "workspaceFolder": "/app",
+
+  "shutdownAction": "none"
+}

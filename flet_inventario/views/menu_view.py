@@ -1,0 +1,95 @@
+import flet as ft
+from core.session import Session
+from core.theme import ThemeColors
+from views.main_layout import MainLayout
+
+# Imports dinámicos para evitar circulares y cargar solo lo necesario
+from views.dashboard_view import dashboard_view
+from views.items.item_view import item_view, create_item_view
+from views.items.category_item_view import category_item_view
+from views.items.item_traceability_view import item_traceability_view
+from views.movements.movement_view import movement_view
+from views.facilities.facility_view import facility_view, facility_form_view
+from views.facilities.facility_detail_view import facility_detail_view
+from views.customers.customer_view import customer_view
+from views.suppliers.supplier_view import supplier_view
+from views.vehicles.vehicle_view import vehicle_view
+from views.stores.store_view import store_view
+from views.users.user_view import user_view
+
+def menu_view(page: ft.Page):
+    if not Session.user:
+        return ft.Column([ft.Text("Sesión expirada", color=ft.colors.RED)], alignment="center")
+
+    # Configuración global de la página para el nuevo estilo
+    page.bgcolor = ThemeColors.BG_DEEP
+    page.window_width = 1400
+    page.window_height = 900
+    page.window_resizable = True
+    page.padding = 0
+    page.spacing = 0
+    page.update()
+
+    # Contenedor donde se renderizará el módulo activo
+    content_area = ft.Container(expand=True)
+
+    def navigate(key, **kwargs):
+        """Manejador central de navegación con soporte para parámetros."""
+        
+        # Mapa de llaves a (Título, Función de Vista)
+        modules = {
+            "dashboard": ("Dashboard", dashboard_view),
+            "items": ("Inventario de Activos", item_view),
+            "create_item": ("Nuevo Activo", create_item_view),
+            "movements": ("Trazabilidad de Movimientos", movement_view),
+            "facilities": ("Gestión de Instalaciones", facility_view),
+            "create_facility": ("Nueva Instalación", facility_form_view),
+            "facility_detail":  ("Detalle de Instalación", facility_detail_view),
+            "item_traceability": ("Trazabilidad de Activo", item_traceability_view),
+            "category_items":   ("Inventario por Categoría", category_item_view),
+            "customers": ("Gestión de Clientes", customer_view),
+            "suppliers": ("Gestión de Proveedores", supplier_view),
+            "vehicles": ("Gestión de Vehículos", vehicle_view),
+            "stores": ("Gestión de Bodegas", store_view),
+            "users": ("Administración de Usuarios", user_view),
+        }
+
+        if key == "logout":
+            from views.login.login_view import login_view
+            Session.clear()
+            page.clean()
+            page.add(login_view(page))
+            return
+
+        # Sincronizar IDs en sesión para compatibilidad con vistas legacy
+        if key == "facility_detail" and "facility_id" in kwargs:
+            page.session.set("facility_detail_id", kwargs["facility_id"])
+        if "item_id" in kwargs:
+            page.session.set("item_detail_id", kwargs["item_id"])
+
+        if key not in modules:
+            print(f"Error: Módulo '{key}' no encontrado.")
+            return
+
+        title, view_func = modules.get(key, ("Dashboard", dashboard_view))
+        
+        page.clean()
+        
+        # Pasar navigate y cualquier parámetro adicional a la vista
+        view_content = view_func(page, navigate, **kwargs)
+        
+        layout = MainLayout(
+            page=page,
+            content=view_content,
+            title=title,
+            navigate_callback=navigate
+        )
+        
+        page.add(layout)
+        page.update()
+
+    # Inicializar con el Dashboard
+    navigate("dashboard")
+    
+    # Retornamos un placeholder ya que 'navigate' se encarga de llenar la página
+    return ft.Container()
