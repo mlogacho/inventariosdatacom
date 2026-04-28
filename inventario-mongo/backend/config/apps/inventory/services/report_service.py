@@ -106,6 +106,64 @@ def _fill_table_rows(table, items: list, fields: list):
                 _set_cell(new_row.cells[col_idx], str(item.get(field, "—")))
 
 
+def _keep_section_together(doc, heading_text: str, table):
+    """
+    Mueve toda la sección de firmas (encabezado + texto de conformidad + tabla)
+    a la página siguiente como un bloque si no cabe en la página actual.
+
+    Estrategia:
+    - Recorre los elementos XML directos del body en orden para encontrar
+      todos los párrafos entre el encabezado y la tabla y les aplica
+      keep_with_next, formando una cadena ininterrumpida.
+    - cantSplit en cada fila evita que una fila se parta internamente.
+    - keep_with_next en el primer párrafo de cada celda (excepto última fila)
+      encadena las filas entre sí.
+    """
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    def _apply_kwn(para_el):
+        """Añade w:keepNext al w:pPr del párrafo XML dado."""
+        pPr = para_el.find(qn('w:pPr'))
+        if pPr is None:
+            pPr = OxmlElement('w:pPr')
+            para_el.insert(0, pPr)
+        kwn = OxmlElement('w:keepNext')
+        kwn.set(qn('w:val'), '1')
+        pPr.append(kwn)
+
+    # Recorrer body en orden XML: encadenar todos los párrafos desde el
+    # encabezado hasta (sin incluir) la tabla de firmas.
+    heading_found = False
+    for el in doc.element.body:
+        tag = el.tag.split('}')[-1] if '}' in el.tag else el.tag
+        if tag == 'p':
+            text = ''.join(t.text for t in el.iter(qn('w:t')) if t.text)
+            if heading_text in text:
+                heading_found = True
+            if heading_found:
+                _apply_kwn(el)
+        elif tag == 'tbl':
+            if heading_found:
+                break  # llegamos a la tabla de firmas; detenemos la cadena
+
+    # cantSplit + keep_with_next en filas de la tabla
+    rows = list(table.rows)
+    for r_idx, row in enumerate(rows):
+        tr = row._tr
+        trPr = tr.find(qn('w:trPr'))
+        if trPr is None:
+            trPr = OxmlElement('w:trPr')
+            tr.insert(0, trPr)
+        cantSplit = OxmlElement('w:cantSplit')
+        cantSplit.set(qn('w:val'), '1')
+        trPr.append(cantSplit)
+        if r_idx < len(rows) - 1:
+            for cell in row.cells:
+                if cell.paragraphs:
+                    cell.paragraphs[0].paragraph_format.keep_with_next = True
+
+
 def _replace_in_section(doc, old: str, new: str):
     """Reemplaza texto en cuerpo, encabezados y pies de página."""
     for p in doc.paragraphs:
@@ -195,7 +253,12 @@ def generate_facility_pdf(facility) -> bytes:
     # ── Abrir template y rellenar ─────────────────────────────────────────────
     doc = Document(_TEMPLATE)
 
-    # 1. Reemplazar TODAS las fechas estáticas del documento
+    # 1. Carátula: reemplaza subtítulo y borra título original
+    _replace_in_section(doc, "JEFATURA NACIONAL TÉCNICA",
+                        "ACTA DE ENTREGA DE PRESTACIÓN DE SERVICIOS CORPORATIVOS")
+    _replace_in_section(doc, "ACTA DE ENTREGA DE SERVICIO", "")
+
+    # 2. Reemplazar TODAS las fechas estáticas del documento
     _replace_in_section(doc, "27 de abril de 2026", fecha_fin_larga)
 
     # 2. Tabla 2 — Información General
@@ -231,6 +294,9 @@ def generate_facility_pdf(facility) -> bytes:
                      "(nombre del técnico asignado)", tecnico_nombre)
     _replace_in_para(t5.cell(2, 2).paragraphs[1],
                      "(nombre cliente)", cliente_nombre)
+
+    # 7. Mantener la sección de firmas entera en una sola página
+    _keep_section_together(doc, "FIRMAS Y CONFORMIDAD", t5)
 
     # ── Guardar .docx y convertir a PDF ──────────────────────────────────────
     with tempfile.TemporaryDirectory() as tmpdir:
