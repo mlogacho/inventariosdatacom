@@ -607,7 +607,14 @@ def facility_form_view(page: ft.Page, navigate):
                 vehicles  = APIClient.get("inventory/vehicles/")
 
                 cliente_dd.options = [
-                    ft.dropdown.Option(key=str(c.get("id", c.get("_id"))), text=c.get("nombre_cliente", "---"))
+                    ft.dropdown.Option(
+                        key=str(c.get("id", c.get("_id"))),
+                        text=(
+                            f"{c.get('nombre_cliente', '---')}"
+                            f" | RUC: {c.get('tax_id', 'N/D')}"
+                            f" | Ciudad: {c.get('city', 'N/D')}"
+                        )
+                    )
                     for c in (customers or [])
                 ]
                 tecnicos_activos = [u for u in (users or []) if u.get("rol") in ("tecnico", "admin")]

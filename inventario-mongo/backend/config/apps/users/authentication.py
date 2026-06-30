@@ -30,4 +30,4 @@ class JWTAuthentication(BaseAuthentication):
         if not user:
             raise AuthenticationFailed("Usuario no válido o inactivo")
 
-        return (user, None)
+        return (user, payload)

@@ -40,6 +40,7 @@ from config.apps.inventory.views.customer_views import (
     CustomerListCreateView,
     CustomerDetailView,
 )
+from config.apps.inventory.views.crm_customer_views import CRMActiveCustomerListView
 
 # =========================
 # MOVEMENTS (TRAZABILIDAD — APPEND-ONLY)
@@ -73,6 +74,7 @@ urlpatterns = [
     # CUSTOMERS
     path("customers/", CustomerListCreateView.as_view(), name="customer-list-create"),
     path("customers/<str:pk>/", CustomerDetailView.as_view(), name="customer-detail"),
+    path("crm/customers/", CRMActiveCustomerListView.as_view(), name="crm-active-customers"),
 
     # MOVEMENTS — Trazabilidad (APPEND-ONLY, sin DELETE ni UPDATE)
     # Lista global + creación

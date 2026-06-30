@@ -103,6 +103,19 @@ Modulos activos en navegacion principal:
 - Permisos con RBAC en backend
 - Backend publicado detras de Nginx
 
+### Acceso ERP SSO (WebISO)
+
+- Inventarios acepta `sso_token` generado por ERP DataCom y realiza autologin.
+- Validacion online del token contra CRM DataCom en:
+	- `/api/core/user-permissions/`
+- Si CRM no esta en linea, se informa en pantalla y no se fuerza login local.
+
+### Clientes para descargas
+
+- La seleccion de clientes se obtiene en tiempo real desde CRM.
+- Solo se incluyen clientes activos.
+- El selector muestra nombre, RUC y ciudad para facilitar busqueda.
+
 ## Estado de produccion
 
 Despliegue aplicado con commit:

@@ -1,5 +1,7 @@
 import flet as ft
-from services.auth_service import login
+from urllib.parse import parse_qs
+
+from services.auth_service import login, login_with_sso_token
 from core.session import Session
 from core.theme import ThemeColors, JetBrainsTheme
 from views.menu_view import menu_view
@@ -59,6 +61,56 @@ def login_view(page: ft.Page):
         page.clean()
         menu_view(page)
 
+    def _extract_sso_token():
+        candidates = []
+        for attr in ("query", "route", "url"):
+            value = getattr(page, attr, None)
+            if value:
+                candidates.append(str(value))
+
+        params = getattr(page, "query_params", None)
+        if isinstance(params, dict) and params.get("sso_token"):
+            return str(params.get("sso_token"))
+
+        for raw in candidates:
+            query_str = raw
+            if "?" in raw:
+                query_str = raw.split("?", 1)[1]
+            if query_str.startswith("?"):
+                query_str = query_str[1:]
+            if not query_str:
+                continue
+
+            parsed = parse_qs(query_str)
+            token_values = parsed.get("sso_token")
+            if token_values and token_values[0]:
+                return token_values[0]
+        return None
+
+    def try_sso_autologin():
+        sso_token = _extract_sso_token()
+        if not sso_token:
+            return
+
+        error_txt.value = ""
+        loading.visible = True
+        page.update()
+
+        data, error = login_with_sso_token(sso_token)
+        if error:
+            detail = str(error.get("detail", ""))
+            if "CRM no esta en linea" in detail:
+                error_txt.value = "CRM no esta en linea"
+            else:
+                error_txt.value = detail or "No se pudo validar sesion ERP"
+            loading.visible = False
+            page.update()
+            return
+
+        Session.set(token=data["access_token"], user=data["user"])
+        page.clean()
+        menu_view(page)
+
     login_btn = ft.ElevatedButton(
         text="INGRESAR AL SISTEMA",
         style=JetBrainsTheme.primary_button_style(),
@@ -113,7 +165,7 @@ def login_view(page: ft.Page):
         ], horizontal_alignment="center", spacing=15)
     )
 
-    return ft.Stack([
+    content = ft.Stack([
         blobs,
         ft.Container(
             expand=True,
@@ -133,3 +185,6 @@ def login_view(page: ft.Page):
             ], expand=True)
         )
     ], expand=True)
+
+    try_sso_autologin()
+    return content

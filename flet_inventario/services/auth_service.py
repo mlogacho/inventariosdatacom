@@ -25,3 +25,16 @@ def login(username, password):
         
     except Exception as e:
         return None, {"detail": str(e)}
+
+
+def login_with_sso_token(sso_token):
+    """Intercambia token ERP por token local de Inventarios."""
+    try:
+        response_data = APIClient.post("users/sso-login/", json={"sso_token": sso_token})
+
+        if response_data and "access_token" in response_data:
+            return response_data, None
+
+        return None, {"detail": "Respuesta de servidor inválida"}
+    except Exception as e:
+        return None, {"detail": str(e)}

@@ -2,6 +2,20 @@
 
 Todas las modificaciones relevantes del proyecto se registran en este archivo.
 
+## [2026-06-30] - Integracion ERP SSO + clientes CRM activos
+
+### Agregado
+- Endpoint `POST /api/users/sso-login/` para intercambio de `sso_token` ERP por JWT local de Inventarios.
+- Endpoint `GET /api/inventory/crm/customers/` para obtener clientes activos desde CRM.
+- Servicio backend para validacion online de token ERP y consulta de clientes en CRM.
+
+### Cambiado
+- Login web de Inventarios ahora intenta autologin cuando llega `sso_token` en URL.
+- Selector de cliente en flujo de descarga/instalacion muestra `nombre | RUC | ciudad`.
+
+### Comportamiento operativo
+- Si CRM no esta en linea, Inventarios informa claramente la indisponibilidad de CRM.
+
 ## [2026-06-30] - Recuperacion de acceso/login
 
 ### Contexto

@@ -16,7 +16,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 
-def create_access_token(user) -> str:
+def create_access_token(user, extra_claims: dict | None = None) -> str:
     """
     Crea un token JWT de acceso para el usuario dado.
 
@@ -41,6 +41,9 @@ def create_access_token(user) -> str:
         "iat": now,
         "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     }
+    if extra_claims and isinstance(extra_claims, dict):
+        payload.update(extra_claims)
+
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 

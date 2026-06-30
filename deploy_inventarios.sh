@@ -122,6 +122,9 @@ MONGO_PORT=27017
 # CORS (frontend en Docker + acceso directo por IP)
 CORS_ALLOWED_ORIGINS=http://${DOMAIN},http://10.11.121.101:8061,http://127.0.0.1:8061
 
+# Integración ERP/CRM (SSO)
+CRM_API_BASE_URL=http://crm.datacom.ec
+
 # Logging
 LOG_LEVEL=INFO
 EOF
