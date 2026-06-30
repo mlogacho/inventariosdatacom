@@ -15,7 +15,7 @@ def login(username, password):
     }
     
     try:
-        response_data = APIClient.post("users/login/", json=data)
+        response_data = APIClient.post("users/login/", json=data, include_auth=False)
         
         # El backend devuelve 'access_token' y 'user'
         if response_data and "access_token" in response_data:
@@ -30,7 +30,11 @@ def login(username, password):
 def login_with_sso_token(sso_token):
     """Intercambia token ERP por token local de Inventarios."""
     try:
-        response_data = APIClient.post("users/sso-login/", json={"sso_token": sso_token})
+        response_data = APIClient.post(
+            "users/sso-login/",
+            json={"sso_token": sso_token},
+            include_auth=False,
+        )
 
         if response_data and "access_token" in response_data:
             return response_data, None

@@ -15,19 +15,21 @@ class APIClient:
     """
 
     @staticmethod
-    def _get_headers():
+    def _get_headers(include_auth=True):
         headers = {}
-        if Session.token:
+        if include_auth and Session.token:
             headers["Authorization"] = f"Bearer {Session.token}"
         return headers
 
     @classmethod
     def request(cls, method, endpoint, **kwargs):
         url = f"{BASE_URL.rstrip('/')}/{endpoint.lstrip('/')}"
+
+        include_auth = kwargs.pop("include_auth", True)
         
         # Inyectar headers de autenticación
         headers = kwargs.pop("headers", {})
-        headers.update(cls._get_headers())
+        headers.update(cls._get_headers(include_auth=include_auth))
         
         try:
             response = requests.request(

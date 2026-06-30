@@ -1,5 +1,4 @@
 from rest_framework.authentication import BaseAuthentication
-from rest_framework.exceptions import AuthenticationFailed
 
 from config.apps.users.models.user import User
 from config.apps.users.services.jwt_service import decode_access_token
@@ -17,17 +16,17 @@ class JWTAuthentication(BaseAuthentication):
             return None
 
         if not header.startswith("Bearer "):
-            raise AuthenticationFailed("Formato de token inválido")
+            return None
 
         token = header.replace("Bearer ", "")
         payload = decode_access_token(token)
 
         if not payload:
-            raise AuthenticationFailed("Token inválido o expirado")
+            return None
 
         user = User.objects(id=payload["user_id"], is_active=True).first()
 
         if not user:
-            raise AuthenticationFailed("Usuario no válido o inactivo")
+            return None
 
         return (user, payload)
