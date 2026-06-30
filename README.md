@@ -116,6 +116,15 @@ Modulos activos en navegacion principal:
 - Permisos con RBAC en backend
 - Backend publicado detras de Nginx
 
+### Fix definitivo SSO (2026-06-30)
+
+- Se corrigio el bloqueo de SSO causado por `Authorization` local expirado enviado por el cliente en `sso-login`.
+- El backend ahora no interrumpe endpoints `AllowAny` por token `Bearer` invalido/expirado en cabecera.
+- El cliente de Inventarios no adjunta `Authorization` para `users/login/` ni `users/sso-login/`.
+- Se elimino la pantalla de acceso manual en el flujo SSO:
+	- si SSO es valido, ingresa directo al sistema;
+	- si el token ERP es invalido o expirado, redirige a ERP DataCom.
+
 ### Acceso ERP SSO (WebISO)
 
 - Inventarios opera en modo SSO obligatorio desde ERP DataCom.
@@ -144,7 +153,7 @@ Modulos activos en navegacion principal:
 ## Estado de produccion
 
 Despliegue aplicado con commit:
-- df28db7
+- d9991fb
 
 Fecha de despliegue:
 - 2026-06-30
@@ -153,6 +162,7 @@ Hotfix operativo aplicado (mismo dia):
 - Inventarios publicado temporalmente por IP y puerto para continuidad:
 	- `http://10.11.121.101:8070`
 - Correccion de entorno CRM en backend para restablecer validacion SSO.
+- Aplicado fix definitivo para no mostrar pantalla de acceso y robustecer flujo SSO.
 
 ## Mejora operativa aplicada (2026-06-30)
 

@@ -2,6 +2,26 @@
 
 Todas las modificaciones relevantes del proyecto se registran en este archivo.
 
+## [2026-06-30] - Fix definitivo SSO ERP (sin pantalla de acceso manual)
+
+### Corregido
+- Se evita el bloqueo de `POST /api/users/sso-login/` cuando el cliente envia `Authorization` local expirado.
+- `JWTAuthentication` deja pasar endpoints `AllowAny` aunque exista cabecera `Bearer` invalida/expirada.
+
+### Cambiado
+- Cliente HTTP de Flet permite desactivar `Authorization` por endpoint.
+- `users/login/` y `users/sso-login/` ahora se envian sin token local heredado.
+- Vista de login ajustada a flujo SSO-only:
+  - no se muestra formulario manual;
+  - si token ERP es valido, acceso directo;
+  - si token ERP es invalido/expirado, redireccion a ERP DataCom.
+
+### Despliegue
+- Commit aplicado en servidor: `d9991fb`
+- Verificacion operativa:
+  - `http://10.11.121.101:8070/` -> 200
+  - `http://10.11.121.101:8070/api/health/` -> 200
+
 ## [2026-06-30] - Deploy v2 con rollback automatico
 
 ### Agregado
