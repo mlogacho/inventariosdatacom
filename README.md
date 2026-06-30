@@ -62,6 +62,19 @@ Ruta de despliegue:
 
 Proceso recomendado:
 
+Opcion recomendada (v2 con rollback automatico):
+
+```bash
+cd /opt/inventarios_datacom
+bash deploy_inventarios_v2.sh
+```
+
+Comportamiento de `deploy_inventarios_v2.sh`:
+- Crea respaldos de `docker-compose.yml`, `.env.dev`, `.env` y sitio Nginx.
+- Si falla una etapa critica, ejecuta rollback automatico a estado previo.
+- Valida salud con reintentos en `8060` y `8070` para evitar falsos negativos por arranque.
+- Registra carpeta de backup para auditoria y recuperacion manual.
+
 1. Actualizar codigo:
 
 ```bash

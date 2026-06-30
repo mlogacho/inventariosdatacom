@@ -2,6 +2,27 @@
 
 Todas las modificaciones relevantes del proyecto se registran en este archivo.
 
+## [2026-06-30] - Deploy v2 con rollback automatico
+
+### Agregado
+- Script `deploy_inventarios_v2.sh` para despliegue transaccional en servidor.
+
+### Caracteristicas
+- Backup previo de:
+  - `inventario-mongo/docker-compose.yml`
+  - `inventario-mongo/backend/.env.dev`
+  - `flet_inventario/.env`
+  - `/etc/nginx/sites-available/inventarios_datacom`
+- Rollback automatico en error:
+  - restaura commit previo
+  - restaura archivos de configuracion
+  - reconstruye stack Docker
+  - recarga Nginx cuando aplica
+- Validaciones post-deploy con reintentos:
+  - `http://127.0.0.1:8060/api/health/`
+  - `http://127.0.0.1:8070/`
+  - `http://127.0.0.1:8070/api/health/`
+
 ## [2026-06-30] - SSO obligatorio + CRM endpoint interno + continuidad operativa
 
 ### Cambiado
