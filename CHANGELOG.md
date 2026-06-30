@@ -2,6 +2,26 @@
 
 Todas las modificaciones relevantes del proyecto se registran en este archivo.
 
+## [2026-06-30] - SSO obligatorio + CRM endpoint interno + continuidad operativa
+
+### Cambiado
+- Acceso web de Inventarios ajustado a modo SSO obligatorio desde ERP DataCom.
+- Se retiro el acceso manual por usuario/contrasena en la pantalla de login.
+- Se agrego mensaje de acceso restringido cuando no existe `sso_token` en URL.
+
+### Corregido
+- Integracion CRM para SSO corregida en entorno servidor mediante:
+  - `CRM_API_BASE_URL=http://10.11.121.101:8088`
+- Se elimina dependencia de resolucion DNS externa para `crm.datacom.ec` desde contenedor de Inventarios.
+
+### Operacion
+- Publicacion temporal de acceso por continuidad en:
+  - `http://10.11.121.101:8070`
+- Validaciones posteriores al ajuste:
+  - Frontend via 8070: 200
+  - API health via 8070: 200
+  - `POST /api/users/sso-login/` responde flujo esperado (token invalido/expirado cuando corresponde).
+
 ## [2026-06-30] - Integracion ERP SSO + clientes CRM activos
 
 ### Agregado

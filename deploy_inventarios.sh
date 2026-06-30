@@ -5,7 +5,7 @@
 # Ejecutar como root o con sudo en el servidor 10.11.121.101
 # ============================================================
 
-set -e
+set -euo pipefail
 
 # ─── Colores ───────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -21,6 +21,8 @@ FRONTEND_HOST_PORT="127.0.0.1:8061"
 DOMAIN="inventarios.datacom.ec"
 DB_NAME="inventarios_datacom"
 COMPOSE_PROJECT="inventarios_datacom"
+CRM_API_BASE_URL="http://10.11.121.101:8088"
+PUBLIC_IP_URL="http://10.11.121.101:8070"
 
 # Puertos ya en uso por otras apps (NO usar):
 # 8081 WebISO | 8090 Prospeccion | 8088 CRM | 8082 Tickets
@@ -68,12 +70,13 @@ else
     NGINX_AVAILABLE=true
 fi
 
-# Verificar que el puerto del frontend no esté en uso
+# Nota operativa: en actualizaciones, estos puertos pueden estar ocupados por
+# contenedores de Inventarios en ejecución. Se informa y se continúa.
 if ss -tlnp 2>/dev/null | grep -q ":8061 " ; then
-    err "Puerto 8061 ya en uso. Detén el proceso que lo usa antes de continuar."
+    warn "Puerto 8061 detectado en uso. Se asume despliegue existente y se actualizará en sitio."
 fi
 if ss -tlnp 2>/dev/null | grep -q ":8060 " ; then
-    err "Puerto 8060 ya en uso. Detén el proceso que lo usa antes de continuar."
+    warn "Puerto 8060 detectado en uso. Se asume despliegue existente y se actualizará en sitio."
 fi
 
 # ─── 1. Clonar / actualizar repositorio ────────────────────
@@ -123,7 +126,7 @@ MONGO_PORT=27017
 CORS_ALLOWED_ORIGINS=http://${DOMAIN},http://10.11.121.101:8061,http://127.0.0.1:8061
 
 # Integración ERP/CRM (SSO)
-CRM_API_BASE_URL=http://crm.datacom.ec
+CRM_API_BASE_URL=${CRM_API_BASE_URL}
 
 # Logging
 LOG_LEVEL=INFO
@@ -196,6 +199,15 @@ else
     warn "Backend no responde aún en /api/health/ (código: $BACKEND_STATUS). Puede necesitar más tiempo."
 fi
 
+# Health check vía Nginx temporal (8070), con reintentos para evitar falsos 502
+FRONT_8070=$(curl -s -L --retry 25 --retry-delay 1 --retry-all-errors -o /dev/null -w "%{http_code}" http://127.0.0.1:8070/ 2>/dev/null || echo "000")
+API_8070=$(curl -s -L --retry 25 --retry-delay 1 --retry-all-errors -o /dev/null -w "%{http_code}" http://127.0.0.1:8070/api/health/ 2>/dev/null || echo "000")
+if [ "$FRONT_8070" = "200" ] && [ "$API_8070" = "200" ]; then
+    log "Nginx temporal 8070 OK (frontend y api en 200)"
+else
+    warn "Validacion 8070 incompleta: frontend=$FRONT_8070 api=$API_8070"
+fi
+
 # ─── 5. Configurar Nginx ────────────────────────────────────
 if [ "$NGINX_AVAILABLE" = "true" ]; then
     log "Paso 5/5 — Configurando Nginx..."
@@ -261,12 +273,10 @@ echo "╚═══════════════════════�
 echo ""
 echo "  Frontend:  http://inventarios.datacom.ec"
 echo "  API REST:  http://inventarios-api.datacom.ec/api"
-echo "  Acceso IP: http://10.11.121.101:8061"
+echo "  Acceso IP temporal: ${PUBLIC_IP_URL}"
+echo "  CRM API base (SSO): ${CRM_API_BASE_URL}"
 echo ""
-echo "  Credenciales por defecto (CAMBIAR en producción):"
-echo "    admin         / admin123"
-echo "    tecnico       / tecnico123"
-echo "    administrativo/ admin123"
+echo "  Modo de acceso: SSO desde ERP DataCom (sin login manual local)"
 echo ""
 echo "  Para cargar datos de ejemplo:"
 echo "    docker compose -p ${COMPOSE_PROJECT} -f ${APP_DIR}/inventario-mongo/docker-compose.yml exec backend python seed_database.py"

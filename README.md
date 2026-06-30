@@ -99,16 +99,28 @@ Modulos activos en navegacion principal:
 
 ## Seguridad y acceso
 
-- Autenticacion con JWT
+- Autenticacion con JWT local emitido por Inventarios
 - Permisos con RBAC en backend
 - Backend publicado detras de Nginx
 
 ### Acceso ERP SSO (WebISO)
 
+- Inventarios opera en modo SSO obligatorio desde ERP DataCom.
+- El formulario de usuario/contrasena local fue retirado de la vista de acceso.
 - Inventarios acepta `sso_token` generado por ERP DataCom y realiza autologin.
 - Validacion online del token contra CRM DataCom en:
 	- `/api/core/user-permissions/`
-- Si CRM no esta en linea, se informa en pantalla y no se fuerza login local.
+- Si la URL no incluye `sso_token`, se muestra mensaje de acceso restringido desde ERP.
+- Si CRM no esta en linea, se informa claramente en pantalla.
+
+### Integracion CRM activa en produccion
+
+- Base URL CRM usada por Inventarios (entorno servidor):
+	- `CRM_API_BASE_URL=http://10.11.121.101:8088`
+- Endpoints CRM consumidos por Inventarios:
+	- `POST /api/api-token-auth/`
+	- `GET /api/core/user-permissions/`
+	- `GET /api/clients/clients/`
 
 ### Clientes para descargas
 
@@ -119,10 +131,15 @@ Modulos activos en navegacion principal:
 ## Estado de produccion
 
 Despliegue aplicado con commit:
-- fdaa7e5
+- df28db7
 
 Fecha de despliegue:
 - 2026-06-30
+
+Hotfix operativo aplicado (mismo dia):
+- Inventarios publicado temporalmente por IP y puerto para continuidad:
+	- `http://10.11.121.101:8070`
+- Correccion de entorno CRM en backend para restablecer validacion SSO.
 
 ## Mejora operativa aplicada (2026-06-30)
 
@@ -138,6 +155,27 @@ Resultado:
 - Acceso recuperado sin afectar otros servicios del servidor.
 
 ## Troubleshooting rapido
+
+Si acceso desde ERP cae en mensaje "CRM no esta en linea":
+
+1. Verificar variable en backend:
+
+```bash
+grep '^CRM_API_BASE_URL=' /opt/inventarios_datacom/inventario-mongo/backend/.env.dev
+```
+
+Esperado:
+- `CRM_API_BASE_URL=http://10.11.121.101:8088`
+
+2. Verificar endpoint CRM desde servidor:
+
+```bash
+curl -s -o /dev/null -w "crm_token_endpoint:%{http_code}\n" \
+	http://10.11.121.101:8088/api/api-token-auth/
+```
+
+Esperado:
+- `crm_token_endpoint:405` en GET (endpoint existe y espera POST)
 
 Si la pantalla de login muestra credenciales invalidas:
 
