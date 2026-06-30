@@ -1,6 +1,10 @@
 from rest_framework import serializers
 from config.apps.inventory.models.item import Item, ALL_ESTADOS
 from config.apps.inventory.models.subcategory import SubCategory
+from config.apps.inventory.services.inventory_scope_service import (
+    MATRIX_INGRESO,
+    get_allowed_store_by_id,
+)
 
 
 class ItemSerializer(serializers.Serializer):
@@ -37,6 +41,7 @@ class ItemSerializer(serializers.Serializer):
     )
 
     ubicacion_actual_id = serializers.CharField(required=False, allow_null=True)
+    origen_ingreso = serializers.CharField(required=False, default=MATRIX_INGRESO)
 
     def validate_subcategoria_id(self, value):
         subcategoria = SubCategory.objects(id=value, is_active=True).first()
@@ -46,8 +51,43 @@ class ItemSerializer(serializers.Serializer):
             )
         return subcategoria
 
+    def validate_origen_ingreso(self, value):
+        if value != MATRIX_INGRESO:
+            raise serializers.ValidationError(
+                f"El origen de ingreso permitido es '{MATRIX_INGRESO}'."
+            )
+        return value
+
+    def validate_ubicacion_actual_id(self, value):
+        if value in (None, ""):
+            return value
+
+        store = get_allowed_store_by_id(value)
+        if not store:
+            raise serializers.ValidationError(
+                "La bodega de ingreso debe ser 'Bodega General Conocoto' o 'Mini Bodega Cumbaya'."
+            )
+        return value
+
+    def validate(self, attrs):
+        tipo_item = attrs.get("tipo_item", "general")
+        ubicacion = attrs.get("ubicacion_actual_id")
+
+        if tipo_item == "equipo" and not ubicacion:
+            raise serializers.ValidationError(
+                {
+                    "ubicacion_actual_id": (
+                        "Para equipos, debe registrar ingreso en una bodega permitida: "
+                        "Bodega General Conocoto o Mini Bodega Cumbaya."
+                    )
+                }
+            )
+
+        return attrs
+
     def create(self, validated_data):
         subcategoria = validated_data.pop("subcategoria_id")
+        validated_data.setdefault("origen_ingreso", MATRIX_INGRESO)
 
         from bson import ObjectId
         if "ubicacion_actual_id" in validated_data and validated_data["ubicacion_actual_id"]:

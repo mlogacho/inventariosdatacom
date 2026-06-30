@@ -9,13 +9,7 @@ from views.items.item_view import item_view, create_item_view
 from views.items.category_item_view import category_item_view
 from views.items.item_traceability_view import item_traceability_view
 from views.movements.movement_view import movement_view
-from views.facilities.facility_view import facility_view, facility_form_view
-from views.facilities.facility_detail_view import facility_detail_view
-from views.customers.customer_view import customer_view
-from views.suppliers.supplier_view import supplier_view
-from views.vehicles.vehicle_view import vehicle_view
 from views.stores.store_view import store_view
-from views.users.user_view import user_view
 
 def menu_view(page: ft.Page):
     if not Session.user:
@@ -42,16 +36,9 @@ def menu_view(page: ft.Page):
             "items": ("Inventario de Activos", item_view),
             "create_item": ("Nuevo Activo", create_item_view),
             "movements": ("Trazabilidad de Movimientos", movement_view),
-            "facilities": ("Gestión de Instalaciones", facility_view),
-            "create_facility": ("Nueva Instalación", facility_form_view),
-            "facility_detail":  ("Detalle de Instalación", facility_detail_view),
             "item_traceability": ("Trazabilidad de Activo", item_traceability_view),
             "category_items":   ("Inventario por Categoría", category_item_view),
-            "customers": ("Gestión de Clientes", customer_view),
-            "suppliers": ("Gestión de Proveedores", supplier_view),
-            "vehicles": ("Gestión de Vehículos", vehicle_view),
             "stores": ("Gestión de Bodegas", store_view),
-            "users": ("Administración de Usuarios", user_view),
         }
 
         if key == "logout":

@@ -96,14 +96,9 @@ class MainLayout(ft.Container):
         # (Label, Icon, Key, Required Permission)
         menu_items = [
             ("Dashboard",       ft.icons.DASHBOARD,            "dashboard",  None),
-            ("Instalaciones",   ft.icons.BUILD_CIRCLE,         "facilities", "facility:read"),
             ("Ítems (Activos)", ft.icons.INVENTORY_2,          "items",      "item:read"),
             ("Movimientos",     ft.icons.SYNC_ALT,             "movements",  "movement:read"),
-            ("Clientes",        ft.icons.PEOPLE_ALT,           "customers",  "customer:read"),
-            ("Proveedores",     ft.icons.LOCAL_SHIPPING,       "suppliers",  "supplier:read"),
-            ("Vehículos",       ft.icons.DIRECTIONS_CAR_FILLED,"vehicles",   "vehicle:read"),
             ("Bodegas",         ft.icons.WAREHOUSE,            "stores",     "store:read"),
-            ("Usuarios",        ft.icons.MANAGE_ACCOUNTS,      "users",      "user:read"),
         ]
 
         # ── Logo / Marca ──────────────────────────────────────────────────────

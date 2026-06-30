@@ -90,6 +90,9 @@ class Item(BaseDocument):
 
     ubicacion_actual_id = me.ObjectIdField(required=False)
 
+    # Punto de recepción físico del activo al ingresar al inventario.
+    origen_ingreso = me.StringField(default="Matriz: Oficinas Cumbaya")
+
     # Vinculación a Orden de Trabajo / Instalación activa
     ot_id = me.StringField(required=False)
 

@@ -42,37 +42,6 @@ from config.apps.inventory.views.customer_views import (
 )
 
 # =========================
-# SUPPLIER (PROVEEDORES)
-# =========================
-from config.apps.inventory.views.supplier_views import (
-    SupplierListCreateView,
-    SupplierDetailView,
-)
-
-# =========================
-# VEHICLE (VEHÍCULOS)
-# =========================
-from config.apps.inventory.views.vehicle_views import (
-    VehicleListCreateView,
-    VehicleDetailView,
-)
-
-# =========================
-# FACILITY (INSTALACIONES)
-# =========================
-from config.apps.inventory.views.facility_views import (
-    FacilityListCreateView,
-    FacilityDetailView,
-    FacilityStartView,
-    FacilityFinishView,
-    FacilityCancelView,
-    FacilityCloseView,
-    FacilityReportView,
-    FacilityUpdateDestinationsView,
-    FacilityMovementsView,
-)
-
-# =========================
 # MOVEMENTS (TRAZABILIDAD — APPEND-ONLY)
 # V-24 Fix: Agregar endpoint de historial por ítem
 # =========================
@@ -104,25 +73,6 @@ urlpatterns = [
     # CUSTOMERS
     path("customers/", CustomerListCreateView.as_view(), name="customer-list-create"),
     path("customers/<str:pk>/", CustomerDetailView.as_view(), name="customer-detail"),
-
-    # SUPPLIERS
-    path("suppliers/", SupplierListCreateView.as_view(), name="supplier-list-create"),
-    path("suppliers/<str:pk>/", SupplierDetailView.as_view(), name="supplier-detail"),
-
-    # VEHICLES
-    path("vehicles/", VehicleListCreateView.as_view(), name="vehicle-list-create"),
-    path("vehicles/<str:pk>/", VehicleDetailView.as_view(), name="vehicle-detail"),
-
-    # FACILITIES
-    path("facilities/", FacilityListCreateView.as_view(), name="facility-list-create"),
-    path("facilities/<str:pk>/", FacilityDetailView.as_view(), name="facility-detail"),
-    path("facilities/<str:pk>/start/", FacilityStartView.as_view(), name="facility-start"),
-    path("facilities/<str:pk>/finish/", FacilityFinishView.as_view(), name="facility-finish"),
-    path("facilities/<str:pk>/close/",  FacilityCloseView.as_view(),  name="facility-close"),
-    path("facilities/<str:pk>/cancel/", FacilityCancelView.as_view(), name="facility-cancel"),
-    path("facilities/<str:pk>/report/", FacilityReportView.as_view(), name="facility-report"),
-    path("facilities/<str:pk>/destinations/", FacilityUpdateDestinationsView.as_view(), name="facility-destinations"),
-    path("facilities/<str:pk>/movements/", FacilityMovementsView.as_view(), name="facility-movements"),
 
     # MOVEMENTS — Trazabilidad (APPEND-ONLY, sin DELETE ni UPDATE)
     # Lista global + creación
