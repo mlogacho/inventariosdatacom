@@ -1,7 +1,8 @@
 import flet as ft
+import os
 from urllib.parse import parse_qs
 
-from services.auth_service import login, login_with_sso_token
+from services.auth_service import login_with_sso_token
 from core.session import Session
 from core.theme import ThemeColors, JetBrainsTheme
 from views.menu_view import menu_view
@@ -20,46 +21,20 @@ def login_view(page: ft.Page):
     page.padding = 0
 
     # =========================
-    # CONTROLES
+    # CONTROLES (SSO only)
     # =========================
-    username_tf = ft.TextField(
-        label="Usuario",
-        autofocus=True,
-        prefix_icon=ft.icons.PERSON_OUTLINE,
-        **JetBrainsTheme.input_style(),
-        on_submit=lambda e: password_tf.focus()
-    )
+    status_txt = ft.Text("Validando acceso ERP...", color=ThemeColors.TEXT_SECONDARY, size=13)
+    loading = ft.ProgressBar(visible=True, color=ThemeColors.ACCENT_BLUE, width=300)
 
-    password_tf = ft.TextField(
-        label="Contraseña",
-        password=True,
-        can_reveal_password=True,
-        prefix_icon=ft.icons.LOCK_OUTLINE,
-        **JetBrainsTheme.input_style(),
-        on_submit=lambda e: handle_login(None)
-    )
+    erp_portal_url = os.getenv("ERP_PORTAL_URL", "https://erp.datacom.ec/erp-datacom")
 
-    error_txt = ft.Text("", color=ft.colors.RED_400, size=12, weight="w500")
-    loading = ft.ProgressBar(visible=False, color=ThemeColors.ACCENT_BLUE, width=300)
-
-    def handle_login(e):
-        error_txt.value = ""
-        loading.visible = True
-        page.update()
-        
-        data, error = login(username_tf.value, password_tf.value)
-        
-        if error:
-            error_txt.value = error.get("detail", "Credenciales inválidas")
+    def _go_to_erp(reason=None):
+        # En web, reemplaza la pestaña actual para evitar volver a una URL con token vencido.
+        page.launch_url(erp_portal_url, web_window_name="_self")
+        if reason:
+            status_txt.value = reason
             loading.visible = False
             page.update()
-            return
-
-        Session.set(token=data["access_token"], user=data["user"])
-        
-        # Animación de salida (opcional)
-        page.clean()
-        menu_view(page)
 
     def _extract_sso_token():
         candidates = []
@@ -90,34 +65,31 @@ def login_view(page: ft.Page):
     def try_sso_autologin():
         sso_token = _extract_sso_token()
         if not sso_token:
-            return
+            _go_to_erp("Redirigiendo a ERP DataCom...")
+            return False
 
-        error_txt.value = ""
         loading.visible = True
+        status_txt.value = "Validando token ERP..."
         page.update()
 
         data, error = login_with_sso_token(sso_token)
         if error:
             detail = str(error.get("detail", ""))
-            if "CRM no esta en linea" in detail:
-                error_txt.value = "CRM no esta en linea"
+            if "expirado" in detail.lower() or "invalido" in detail.lower() or "inválido" in detail.lower():
+                _go_to_erp("Sesion ERP expirada. Redirigiendo...")
+                return False
+            if "CRM no esta en linea" in detail or "CRM no está en línea" in detail:
+                status_txt.value = "CRM no esta en linea. Reintenta desde ERP."
             else:
-                error_txt.value = detail or "No se pudo validar sesion ERP"
+                status_txt.value = detail or "No se pudo validar sesion ERP"
             loading.visible = False
             page.update()
-            return
+            return False
 
         Session.set(token=data["access_token"], user=data["user"])
         page.clean()
         menu_view(page)
-
-    login_btn = ft.ElevatedButton(
-        text="INGRESAR AL SISTEMA",
-        style=JetBrainsTheme.primary_button_style(),
-        width=300,
-        height=50,
-        on_click=handle_login,
-    )
+        return True
 
     # =========================
     # BACKGROUND DECORATION (JETBRAINS BLOBS)
@@ -138,7 +110,7 @@ def login_view(page: ft.Page):
     ])
 
     # =========================
-    # LOGIN CARD
+    # ACCESO SSO CARD
     # =========================
     login_card = ft.Container(
         **JetBrainsTheme.card_style(),
@@ -146,18 +118,12 @@ def login_view(page: ft.Page):
         content=ft.Column([
             ft.Row([
                 ft.Container(width=8, height=30, bgcolor=ThemeColors.ACCENT_BLUE, border_radius=4),
-                ft.Text("ACCESO", size=24, weight="black", color=ThemeColors.TEXT_PRIMARY),
+                ft.Text("ACCESO ERP", size=24, weight="black", color=ThemeColors.TEXT_PRIMARY),
             ], spacing=10, alignment="center"),
             
-            ft.Text("Inventario de Alto Rendimiento", size=14, color=ThemeColors.TEXT_SECONDARY, text_align="center"),
+            ft.Text("Ingreso controlado por ERP DataCom", size=14, color=ThemeColors.TEXT_SECONDARY, text_align="center"),
             ft.Container(height=20),
-            
-            username_tf,
-            password_tf,
-            error_txt,
-            ft.Container(height=10),
-            
-            login_btn,
+            status_txt,
             loading,
             
             ft.Container(height=20),
@@ -186,5 +152,7 @@ def login_view(page: ft.Page):
         )
     ], expand=True)
 
-    try_sso_autologin()
+    sso_ok = try_sso_autologin()
+    if sso_ok:
+        return ft.Container(width=0, height=0, visible=False)
     return content
