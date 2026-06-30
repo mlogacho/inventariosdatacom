@@ -110,3 +110,55 @@ Despliegue aplicado con commit:
 
 Fecha de despliegue:
 - 2026-06-30
+
+## Mejora operativa aplicada (2026-06-30)
+
+Se aplico una mejora de continuidad operativa para restaurar el acceso al sistema cuando el backend y el frontend estan en linea pero el login devuelve credenciales invalidas.
+
+Validaciones realizadas:
+- Health backend directo: 200
+- Health API via Nginx temporal: 200
+- Login via backend: exitoso
+- Login via Nginx temporal: exitoso
+
+Resultado:
+- Acceso recuperado sin afectar otros servicios del servidor.
+
+## Troubleshooting rapido
+
+Si la pantalla de login muestra credenciales invalidas:
+
+1. Verificar salud API:
+
+```bash
+curl -s -o /dev/null -w "api_health:%{http_code}\n" http://127.0.0.1:8060/api/health/
+curl -s -o /dev/null -w "api_8070:%{http_code}\n" http://127.0.0.1:8070/api/health/
+```
+
+2. Verificar login por API:
+
+```bash
+curl -s -X POST http://127.0.0.1:8060/api/users/login/ \
+	-H "Content-Type: application/json" \
+	--data-binary '{"username":"admin","password":"<password>"}'
+```
+
+3. Si health esta OK y login falla, restablecer usuario admin desde el contenedor backend:
+
+```bash
+cd /opt/inventarios_datacom/inventario-mongo
+docker exec -i inv_dc_backend python manage.py shell <<"PY"
+from config.apps.users.models.user import User
+
+u = User.objects(username="admin").first()
+if not u:
+		u = User(username="admin", rol="admin")
+u.rol = "admin"
+u.set_password("<nueva_clave>")
+u.save()
+print("admin_ready")
+PY
+```
+
+4. Luego de resetear credenciales, probar login en la URL temporal:
+- http://10.11.121.101:8070
