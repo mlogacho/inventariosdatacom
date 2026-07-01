@@ -568,7 +568,7 @@ def movement_view(page: ft.Page, navigate, **kwargs):
         loading,
         ft.Container(
             **JetBrainsTheme.card_style(),
-            expand=True,
+            height=460,
             content=ft.Column([
                 ft.Row([
                     ft.Icon(ft.icons.TABLE_ROWS,
@@ -583,4 +583,4 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                 ft.Column([table], scroll="auto", expand=True),
             ], expand=True, spacing=10),
         ),
-    ], expand=True, spacing=10)
+    ], expand=True, spacing=10, scroll=ft.ScrollMode.ALWAYS)
