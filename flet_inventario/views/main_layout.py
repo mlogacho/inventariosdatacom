@@ -3,12 +3,21 @@ from core.theme import ThemeColors, JetBrainsTheme
 from core.session import Session
 
 class MainLayout(ft.Container):
-    def __init__(self, page: ft.Page, content: ft.Control, title: str, navigate_callback):
+    def __init__(self, page: ft.Page, content: ft.Control, title: str, navigate_callback, nav_key: str = "dashboard"):
         super().__init__()
         self.page = page
         self.main_content = content
         self.nav_title = title
+        self.nav_key = nav_key
         self.navigate = navigate_callback
+
+        self.title_text = ft.Text(self.nav_title, size=20, weight="bold", color=ThemeColors.TEXT_PRIMARY)
+        self.breadcrumb_text = ft.Text(self.nav_title, size=11, color=ThemeColors.ACCENT_BLUE)
+        self.main_content_container = ft.Container(
+            content=self.main_content,
+            expand=True,
+            padding=ft.padding.only(left=30, right=30, bottom=30, top=10),
+        )
         
         self.expand = True
         self.bgcolor = ThemeColors.BG_DEEP
@@ -16,6 +25,14 @@ class MainLayout(ft.Container):
         # Elementos de la UI
         self.sidebar = self._build_sidebar()
         self.header = self._build_header()
+        self.root_row = ft.Row([
+            self.sidebar,
+            ft.Container(width=1, bgcolor=ft.colors.with_opacity(0.1, ft.colors.WHITE)),
+            ft.Column([
+                self.header,
+                self.main_content_container,
+            ], expand=True, spacing=0)
+        ], expand=True, spacing=0)
         
         # Layout principal
         self.content = ft.Stack(
@@ -24,21 +41,22 @@ class MainLayout(ft.Container):
                 self._build_background_blobs(),
 
                 # Application Layer
-                ft.Row([
-                    self.sidebar,
-                    ft.Container(width=1, bgcolor=ft.colors.with_opacity(0.1, ft.colors.WHITE)),
-                    ft.Column([
-                        self.header,
-                        ft.Container(
-                            content=self.main_content,
-                            expand=True,
-                            padding=ft.padding.only(left=30, right=30, bottom=30, top=10),
-                        )
-                    ], expand=True, spacing=0)
-                ], expand=True, spacing=0)
+                self.root_row,
             ],
             expand=True,
         )
+
+    def set_view(self, title: str, content: ft.Control, nav_key: str):
+        self.nav_title = title
+        self.nav_key = nav_key
+        self.main_content = content
+
+        self.title_text.value = title
+        self.breadcrumb_text.value = title
+        self.main_content_container.content = content
+
+        self.sidebar = self._build_sidebar()
+        self.root_row.controls[0] = self.sidebar
 
     def _build_background_blobs(self):
         return ft.Stack([
@@ -66,11 +84,11 @@ class MainLayout(ft.Container):
             # bgcolor=ft.colors.with_opacity(0.3, ThemeColors.BG_SURFACE_NAV),
             content=ft.Row([
                 ft.Column([
-                    ft.Text(self.nav_title, size=20, weight="bold", color=ThemeColors.TEXT_PRIMARY),
+                    self.title_text,
                     ft.Row([
                         ft.Text("Inventario", size=11, color=ThemeColors.TEXT_SECONDARY),
                         ft.Icon(ft.icons.CHEVRON_RIGHT, size=14, color=ThemeColors.TEXT_SECONDARY),
-                        ft.Text(self.nav_title, size=11, color=ThemeColors.ACCENT_BLUE),
+                        self.breadcrumb_text,
                     ], spacing=5)
                 ], spacing=2, alignment="center"),
                 
@@ -131,8 +149,7 @@ class MainLayout(ft.Container):
             if perm and not can_access(rol, perm):
                 continue
 
-            is_active = (name in self.nav_title or
-                         (self.nav_title == "Menú Principal" and key == "dashboard"))
+            is_active = key == self.nav_key
 
             icon_color = ThemeColors.ACCENT_BLUE if is_active else ThemeColors.TEXT_SECONDARY
             text_color = ThemeColors.TEXT_PRIMARY if is_active else ThemeColors.TEXT_SECONDARY

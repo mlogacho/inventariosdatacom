@@ -20,3 +20,4 @@ def handle_login(page, username, password, message):
     # Limpiar UI de login y establecer Menu como base
     page.clean()
     page.add(menu_view(page))
+    page.update()

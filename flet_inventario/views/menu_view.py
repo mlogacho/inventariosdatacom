@@ -22,10 +22,7 @@ def menu_view(page: ft.Page):
     page.window_resizable = True
     page.padding = 0
     page.spacing = 0
-    page.update()
-
-    # Contenedor donde se renderizará el módulo activo
-    content_area = ft.Container(expand=True)
+    current_layout = {"value": None}
 
     def navigate(key, **kwargs):
         """Manejador central de navegación con soporte para parámetros."""
@@ -46,6 +43,7 @@ def menu_view(page: ft.Page):
             Session.clear()
             page.clean()
             page.add(login_view(page))
+            page.update()
             return
 
         # Sincronizar IDs en sesión para compatibilidad con vistas legacy
@@ -60,23 +58,23 @@ def menu_view(page: ft.Page):
 
         title, view_func = modules.get(key, ("Dashboard", dashboard_view))
         
-        page.clean()
-        
         # Pasar navigate y cualquier parámetro adicional a la vista
         view_content = view_func(page, navigate, **kwargs)
-        
-        layout = MainLayout(
-            page=page,
-            content=view_content,
-            title=title,
-            navigate_callback=navigate
-        )
-        
-        page.add(layout)
+
+        if current_layout["value"] is None:
+            current_layout["value"] = MainLayout(
+                page=page,
+                content=view_content,
+                title=title,
+                navigate_callback=navigate,
+                nav_key=key,
+            )
+        else:
+            current_layout["value"].set_view(title=title, content=view_content, nav_key=key)
+
         page.update()
+        return current_layout["value"]
 
     # Inicializar con el Dashboard
-    navigate("dashboard")
-    
-    # Retornamos un placeholder ya que 'navigate' se encarga de llenar la página
-    return ft.Container()
+    layout = navigate("dashboard")
+    return layout

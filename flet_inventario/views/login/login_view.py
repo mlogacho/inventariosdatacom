@@ -88,7 +88,8 @@ def login_view(page: ft.Page):
 
         Session.set(token=data["access_token"], user=data["user"])
         page.clean()
-        menu_view(page)
+        page.add(menu_view(page))
+        page.update()
         return True
 
     # =========================
