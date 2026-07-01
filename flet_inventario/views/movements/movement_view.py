@@ -372,6 +372,7 @@ def movement_view(page: ft.Page, navigate):
         location_filter_label.value = f"Ubicación: {location_name}"
         location_filter_label.visible = True
         clear_location_btn.visible = True
+        compact_panel.visible = False
         apply_filters()
 
     def clear_location_filter(e=None):
