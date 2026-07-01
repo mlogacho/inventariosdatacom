@@ -59,6 +59,8 @@ def movement_view(page: ft.Page, navigate):
     movements_data = []
     stats_data = {}
     selected_location = {"id": None, "name": None}
+    SESSION_LOC_ID_KEY = "movements_location_id"
+    SESSION_LOC_NAME_KEY = "movements_location_name"
 
     # ── Filtros ───────────────────────────────────────────────────────────────
     search_tf = ft.TextField(
@@ -362,6 +364,8 @@ def movement_view(page: ft.Page, navigate):
         fecha_hasta.value = ""
         selected_location["id"] = None
         selected_location["name"] = None
+        page.session.set(SESSION_LOC_ID_KEY, None)
+        page.session.set(SESSION_LOC_NAME_KEY, None)
         location_filter_label.visible = False
         clear_location_btn.visible = False
         apply_filters()
@@ -369,6 +373,8 @@ def movement_view(page: ft.Page, navigate):
     def select_location_filter(location_id, location_name):
         selected_location["id"] = location_id
         selected_location["name"] = location_name
+        page.session.set(SESSION_LOC_ID_KEY, location_id)
+        page.session.set(SESSION_LOC_NAME_KEY, location_name)
         location_filter_label.value = f"Ubicación: {location_name}"
         location_filter_label.visible = True
         clear_location_btn.visible = True
@@ -378,6 +384,8 @@ def movement_view(page: ft.Page, navigate):
     def clear_location_filter(e=None):
         selected_location["id"] = None
         selected_location["name"] = None
+        page.session.set(SESSION_LOC_ID_KEY, None)
+        page.session.set(SESSION_LOC_NAME_KEY, None)
         location_filter_label.visible = False
         clear_location_btn.visible = False
         apply_filters()
@@ -472,6 +480,15 @@ def movement_view(page: ft.Page, navigate):
     # =========================================================================
     # INICIALIZACIÓN
     # =========================================================================
+    saved_location_id = page.session.get(SESSION_LOC_ID_KEY)
+    saved_location_name = page.session.get(SESSION_LOC_NAME_KEY)
+    if saved_location_id:
+        selected_location["id"] = saved_location_id
+        selected_location["name"] = saved_location_name or "Ubicación"
+        location_filter_label.value = f"Ubicación: {selected_location['name']}"
+        location_filter_label.visible = True
+        clear_location_btn.visible = True
+
     import threading
     threading.Timer(0.1, load_stats).start()
     threading.Timer(0.2, apply_filters).start()
