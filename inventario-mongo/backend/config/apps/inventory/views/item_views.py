@@ -16,8 +16,7 @@ class ItemListCreateView(APIView):
     resource_name = "item"
 
     def get(self, request):
-        # Optimiza la carga de referencias (subcategoria/categoria) para listados grandes.
-        queryset = Item.objects(is_active=True).select_related(max_depth=2)
+        queryset = Item.objects(is_active=True)
 
         # filtro por estado
         estado = request.query_params.get("estado")
@@ -63,6 +62,9 @@ class ItemListCreateView(APIView):
                 queryset = queryset.skip(offset).limit(page_size)
             except (TypeError, ValueError):
                 pass
+
+        # Optimiza la carga de referencias (subcategoria/categoria) para listados grandes.
+        queryset = queryset.select_related(max_depth=2)
 
         serializer = ItemSerializer(queryset, many=True)
         return api_response(
