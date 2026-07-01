@@ -16,7 +16,8 @@ class ItemListCreateView(APIView):
     resource_name = "item"
 
     def get(self, request):
-        queryset = Item.objects(is_active=True)
+        # Optimiza la carga de referencias (subcategoria/categoria) para listados grandes.
+        queryset = Item.objects(is_active=True).select_related(max_depth=2)
 
         # filtro por estado
         estado = request.query_params.get("estado")
@@ -51,6 +52,17 @@ class ItemListCreateView(APIView):
                     {"codigo": {"$regex": pattern.pattern, "$options": "i"}},
                 ]}
             )
+
+        # Paginación opcional (mantiene compatibilidad: si no viene page_size, devuelve lista completa)
+        page_size_raw = request.query_params.get("page_size")
+        if page_size_raw:
+            try:
+                page_size = max(1, min(200, int(page_size_raw)))
+                page = max(1, int(request.query_params.get("page", 1)))
+                offset = (page - 1) * page_size
+                queryset = queryset.skip(offset).limit(page_size)
+            except (TypeError, ValueError):
+                pass
 
         serializer = ItemSerializer(queryset, many=True)
         return api_response(
