@@ -78,6 +78,30 @@ class MovementListCreateView(APIView):
         if ot_id:
             queryset = queryset.filter(ot_id=ot_id)
 
+        # Filtro por ubicación actual del ítem
+        ubicacion_id = request.query_params.get("ubicacion_id")
+        if ubicacion_id:
+            from config.apps.inventory.models.item import Item
+
+            if ubicacion_id == "__none__":
+                item_ids = [
+                    item.id
+                    for item in Item.objects(
+                        is_active=True,
+                        ubicacion_actual_id=None,
+                    ).only("id")
+                ]
+            else:
+                item_ids = [
+                    item.id
+                    for item in Item.objects(
+                        is_active=True,
+                        ubicacion_actual_id=ubicacion_id,
+                    ).only("id")
+                ]
+
+            queryset = queryset.filter(item__in=item_ids or ["__no_match__"])
+
         # Filtro por cliente (vía instalaciones/OT vinculadas)
         cliente = request.query_params.get("cliente")
         if cliente:

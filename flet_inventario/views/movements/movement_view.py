@@ -58,6 +58,7 @@ def movement_view(page: ft.Page, navigate):
     # =========================================================================
     movements_data = []
     stats_data = {}
+    selected_location = {"id": None, "name": None}
 
     # ── Filtros ───────────────────────────────────────────────────────────────
     search_tf = ft.TextField(
@@ -108,6 +109,12 @@ def movement_view(page: ft.Page, navigate):
 
     # Label contador
     page_label = ft.Text("", size=12, color=ThemeColors.TEXT_SECONDARY)
+    location_filter_label = ft.Text("", size=12, color=ThemeColors.ACCENT_BLUE, visible=False)
+    clear_location_btn = ft.TextButton(
+        "Quitar ubicación",
+        visible=False,
+        style=ft.ButtonStyle(color=ThemeColors.TEXT_SECONDARY),
+    )
 
     stats_row = ft.Row(spacing=16, scroll="auto")
     compact_title = ft.Text("", size=14, weight="bold", color=ThemeColors.TEXT_PRIMARY)
@@ -186,6 +193,8 @@ def movement_view(page: ft.Page, navigate):
             params["fecha_desde"] = fecha_desde.value
         if fecha_hasta.value:
             params["fecha_hasta"] = fecha_hasta.value
+        if selected_location["id"] is not None:
+            params["ubicacion_id"] = selected_location["id"]
 
         try:
             data    = list_movements(params)
@@ -351,7 +360,28 @@ def movement_view(page: ft.Page, navigate):
         cliente_tf.value  = ""
         fecha_desde.value = ""
         fecha_hasta.value = ""
+        selected_location["id"] = None
+        selected_location["name"] = None
+        location_filter_label.visible = False
+        clear_location_btn.visible = False
         apply_filters()
+
+    def select_location_filter(location_id, location_name):
+        selected_location["id"] = location_id
+        selected_location["name"] = location_name
+        location_filter_label.value = f"Ubicación: {location_name}"
+        location_filter_label.visible = True
+        clear_location_btn.visible = True
+        apply_filters()
+
+    def clear_location_filter(e=None):
+        selected_location["id"] = None
+        selected_location["name"] = None
+        location_filter_label.visible = False
+        clear_location_btn.visible = False
+        apply_filters()
+
+    clear_location_btn.on_click = clear_location_filter
 
     def open_items_by_location(estado=None):
         loading.visible = True
@@ -369,9 +399,12 @@ def movement_view(page: ft.Page, navigate):
             for item in items:
                 loc_id = str(item.get("ubicacion_actual_id") or "")
                 loc_name = store_name_by_id.get(loc_id, "Sin ubicación")
-                grouped[loc_name] = grouped.get(loc_name, 0) + 1
+                key = loc_id if loc_id else "__none__"
+                if key not in grouped:
+                    grouped[key] = {"name": loc_name, "count": 0}
+                grouped[key]["count"] += 1
 
-            rows = sorted(grouped.items(), key=lambda x: x[1], reverse=True)
+            rows = sorted(grouped.items(), key=lambda x: x[1]["count"], reverse=True)
             compact_title.value = "Activos En Stock por Ubicación" if estado == "STOCK" else "Activos Totales por Ubicación"
             compact_total.value = f"{len(items)} activo(s)"
             compact_rows.controls = [
@@ -387,12 +420,14 @@ def movement_view(page: ft.Page, navigate):
                         padding=ft.padding.symmetric(horizontal=8, vertical=6),
                         border_radius=8,
                         bgcolor=ft.colors.with_opacity(0.04, ft.colors.WHITE),
+                        ink=True,
+                        on_click=lambda e, loc_id=loc_id, loc_name=row["name"]: select_location_filter(loc_id, loc_name),
                         content=ft.Row([
-                            ft.Text(name, expand=True, overflow=ft.TextOverflow.ELLIPSIS),
-                            ft.Text(str(count), weight="bold", color=ThemeColors.ACCENT_BLUE),
+                            ft.Text(row["name"], expand=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            ft.Text(str(row["count"]), weight="bold", color=ThemeColors.ACCENT_BLUE),
                         ]),
                     )
-                    for name, count in rows
+                    for loc_id, row in rows
                 ])
             else:
                 compact_rows.controls.append(
@@ -448,6 +483,10 @@ def movement_view(page: ft.Page, navigate):
         compact_panel,
         ft.Container(height=4),
         filter_bar,
+        ft.Row([
+            location_filter_label,
+            clear_location_btn,
+        ], spacing=10),
         loading,
         ft.Container(
             **JetBrainsTheme.card_style(),
