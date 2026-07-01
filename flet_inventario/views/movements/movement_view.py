@@ -4,6 +4,8 @@ from components.status_badge import status_badge
 from components.stats_card import stats_card
 from components.timeline import asset_timeline
 from services.movement_service import list_movements, get_movement_stats, get_asset_history
+from services.item_service import list_items
+from services.store_service import list_stores
 
 # Tipos de movimiento — sincronizados con backend OperationType.ALL
 TIPO_MOVIMIENTO_OPTIONS = [
@@ -77,8 +79,8 @@ def movement_view(page: ft.Page, navigate):
         **JetBrainsTheme.input_style()
     )
 
-    ot_tf = ft.TextField(
-        label="Orden de Trabajo (OT)",
+    cliente_tf = ft.TextField(
+        label="Cliente",
         width=175,
         **JetBrainsTheme.input_style()
     )
@@ -122,11 +124,13 @@ def movement_view(page: ft.Page, navigate):
             stats_row.controls = [
                 stats_card("Activos Totales",
                            str(stats_data.get("total_items", 0)),
-                           ft.icons.INVENTORY_2),
+                           ft.icons.INVENTORY_2,
+                           on_click=lambda e: open_items_by_location()),
                 stats_card("En Stock",
                            str(stats_data.get("stats_by_state", {}).get("STOCK", 0)),
                            ft.icons.WAREHOUSE,
-                           ThemeColors.STATE_STOCK),
+                           ThemeColors.STATE_STOCK,
+                           on_click=lambda e: open_items_by_location("STOCK")),
                 stats_card("Reservados",
                            str(stats_data.get("stats_by_state", {}).get("RESERVADO", 0)),
                            ft.icons.VPN_KEY,
@@ -149,8 +153,8 @@ def movement_view(page: ft.Page, navigate):
             params["search"] = search_tf.value
         if tipo_dd.value and tipo_dd.value not in ("TODOS", ""):
             params["tipo_movimiento"] = tipo_dd.value
-        if ot_tf.value:
-            params["ot_id"] = ot_tf.value
+        if cliente_tf.value:
+            params["cliente"] = cliente_tf.value
         if fecha_desde.value:
             params["fecha_desde"] = fecha_desde.value
         if fecha_hasta.value:
@@ -317,10 +321,67 @@ def movement_view(page: ft.Page, navigate):
     def reset_filters(e):
         search_tf.value   = ""
         tipo_dd.value     = "TODOS"
-        ot_tf.value       = ""
+        cliente_tf.value  = ""
         fecha_desde.value = ""
         fecha_hasta.value = ""
         apply_filters()
+
+    def open_items_by_location(estado=None):
+        loading.visible = True
+        page.update()
+
+        try:
+            items = list_items({"estado": estado} if estado else {}) or []
+            stores = list_stores() or []
+            store_name_by_id = {
+                str(s.get("id")): s.get("nombre_bodega", "Sin nombre")
+                for s in stores
+            }
+
+            grouped = {}
+            for item in items:
+                loc_id = str(item.get("ubicacion_actual_id") or "")
+                loc_name = store_name_by_id.get(loc_id, "Sin ubicación")
+                grouped[loc_name] = grouped.get(loc_name, 0) + 1
+
+            rows = sorted(grouped.items(), key=lambda x: x[1], reverse=True)
+            title = "Activos En Stock por Ubicación" if estado == "STOCK" else "Activos Totales por Ubicación"
+
+            page.dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(title, weight="bold"),
+                content=ft.Container(
+                    width=560,
+                    height=420,
+                    content=ft.Column(
+                        [
+                            ft.Row([
+                                ft.Text("Ubicación", weight="bold", color=ThemeColors.TEXT_SECONDARY, expand=True),
+                                ft.Text("Cantidad", weight="bold", color=ThemeColors.TEXT_SECONDARY),
+                            ]),
+                            ft.Divider(height=1, color=ft.colors.with_opacity(0.08, ft.colors.WHITE)),
+                            ft.Column([
+                                ft.Row([
+                                    ft.Text(name, expand=True),
+                                    ft.Text(str(count), weight="bold", color=ThemeColors.ACCENT_BLUE),
+                                ])
+                                for name, count in rows
+                            ], spacing=8, scroll=ft.ScrollMode.AUTO, expand=True),
+                        ],
+                        spacing=10,
+                        expand=True,
+                    ),
+                ),
+                actions=[
+                    ft.TextButton("Cerrar", on_click=lambda e: setattr(page.dialog, "open", False) or page.update())
+                ],
+            )
+            page.dialog.open = True
+        except Exception as ex:
+            print(f"Error cargando activos por ubicacion: {ex}")
+        finally:
+            loading.visible = False
+            page.update()
 
     # =========================================================================
     # BARRA DE FILTROS (una sola fila — compatible con Flet 0.19)
@@ -330,7 +391,7 @@ def movement_view(page: ft.Page, navigate):
         content=ft.Row([
             search_tf,
             tipo_dd,
-            ot_tf,
+            cliente_tf,
             ft.Row([fecha_desde, btn_desde], spacing=2),
             ft.Row([fecha_hasta, btn_hasta], spacing=2),
             ft.ElevatedButton(

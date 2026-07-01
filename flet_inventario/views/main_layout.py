@@ -114,7 +114,6 @@ class MainLayout(ft.Container):
         # (Label, Icon, Key, Required Permission)
         menu_items = [
             ("Dashboard",       ft.icons.DASHBOARD,            "dashboard",  None),
-            ("Ítems (Activos)", ft.icons.INVENTORY_2,          "items",      "item:read"),
             ("Movimientos",     ft.icons.SYNC_ALT,             "movements",  "movement:read"),
             ("Bodegas",         ft.icons.WAREHOUSE,            "stores",     "store:read"),
         ]

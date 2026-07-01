@@ -78,6 +78,32 @@ class MovementListCreateView(APIView):
         if ot_id:
             queryset = queryset.filter(ot_id=ot_id)
 
+        # Filtro por cliente (vía instalaciones/OT vinculadas)
+        cliente = request.query_params.get("cliente")
+        if cliente:
+            from config.apps.inventory.models.customer import Customer
+            from config.apps.inventory.models.facility import Facility
+
+            customer_ids = [
+                c.id
+                for c in Customer.objects(
+                    nombre_cliente__icontains=cliente,
+                    is_active=True,
+                ).only("id")
+            ]
+
+            ot_codes = []
+            if customer_ids:
+                ot_codes = [
+                    f.codigo_instalacion
+                    for f in Facility.objects(
+                        cliente__in=customer_ids,
+                        is_active=True,
+                    ).only("codigo_instalacion")
+                ]
+
+            queryset = queryset.filter(ot_id__in=ot_codes or ["__no_match__"])
+
         # Filtro de búsqueda global
         search = request.query_params.get("search")
         if search:

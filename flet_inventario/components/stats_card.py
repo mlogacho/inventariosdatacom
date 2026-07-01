@@ -4,7 +4,13 @@ from core.theme import ThemeColors, JetBrainsTheme
 # Proporción Áurea φ ≈ 1.618
 PHI = 1.618
 
-def stats_card(title: str, value: str, icon, color: str = ThemeColors.ACCENT_BLUE):
+def stats_card(
+    title: str,
+    value: str,
+    icon,
+    color: str = ThemeColors.ACCENT_BLUE,
+    on_click=None,
+):
     """
     Tarjeta de estadísticas con proporciones áureas.
     Ancho base: 260px  →  Alto: 260 / PHI ≈ 161px
@@ -20,6 +26,8 @@ def stats_card(title: str, value: str, icon, color: str = ThemeColors.ACCENT_BLU
         bgcolor=ft.colors.with_opacity(0.08, ft.colors.WHITE),
         border=ft.border.all(1, ft.colors.with_opacity(0.12, ft.colors.WHITE)),
         padding=ft.padding.only(left=18, right=16, top=14, bottom=14),
+        ink=on_click is not None,
+        on_click=on_click,
         content=ft.Column([
             ft.Row([
                 ft.Container(
