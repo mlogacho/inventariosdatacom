@@ -39,6 +39,7 @@ class MovementListCreateView(APIView):
 
     def get(self, request):
         queryset = Movement.objects().order_by("-fecha")
+        from config.apps.inventory.models.item import Item
 
         # Filtro por ítem
         item_id = request.query_params.get("item_id")
@@ -131,13 +132,16 @@ class MovementListCreateView(APIView):
         # Filtro de búsqueda global
         search = request.query_params.get("search")
         if search:
-            from config.apps.inventory.models.item import Item
             item_ids = Item.objects.filter(
                 me.Q(codigo__icontains=search) | 
                 me.Q(nombre__icontains=search) | 
                 me.Q(serial__icontains=search)
             ).values_list("id")
             queryset = queryset.filter(item__in=item_ids)
+
+        # Mostrar únicamente movimientos vinculados a ítems activos.
+        active_item_ids = Item.objects(is_active=True).values_list("id")
+        queryset = queryset.filter(item__in=active_item_ids)
 
         # Paginación
         try:
