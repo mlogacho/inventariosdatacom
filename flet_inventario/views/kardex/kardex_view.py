@@ -2,10 +2,12 @@ import flet as ft
 import threading
 
 from core.theme import ThemeColors, JetBrainsTheme
+from core.api_client import APIClient
 from services.item_service import list_items
 from services.movement_service import list_movements
 from services.user_service import list_users
 from services.customer_service import list_customers
+from services.store_service import list_stores
 
 
 def _location_type(item: dict) -> str:
@@ -43,6 +45,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
     movements_recent = []
     users_all = []
     customers_all = []
+    stores_all = []
 
     loading = ft.ProgressBar(visible=False, color=ThemeColors.ACCENT_BLUE)
 
@@ -107,6 +110,24 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
         loc_type = _location_type(item)
         loc_color = ThemeColors.ACCENT_BLUE if loc_type == "BODEGA" else ThemeColors.ACCENT_MAGENTA
         responsable = item.get("responsable_nombre") or "---"
+
+        actions = ft.Row([
+            ft.IconButton(
+                icon=ft.icons.EDIT_NOTE_ROUNDED,
+                tooltip="Editar registro",
+                icon_size=18,
+                icon_color=ThemeColors.ACCENT_BLUE,
+                on_click=lambda e, it=item: _open_edit_dialog(it),
+            ),
+            ft.IconButton(
+                icon=ft.icons.TIMELINE,
+                tooltip="Ver historial del activo",
+                icon_size=18,
+                icon_color=ThemeColors.ACCENT_BLUE,
+                on_click=lambda e, it=item: navigate("item_traceability", item_id=it.get("id"), item_data=it),
+            ),
+        ], spacing=0)
+
         return ft.Container(
             padding=ft.padding.symmetric(horizontal=14, vertical=8),
             border=ft.border.only(bottom=ft.BorderSide(1, ft.colors.with_opacity(0.05, ft.colors.WHITE))),
@@ -117,15 +138,125 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
                 ft.Container(width=100, content=ft.Text(loc_type, size=11, weight="bold", color=loc_color)),
                 ft.Container(width=240, content=ft.Text(_read_loc_name(item), size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
                 ft.Container(width=180, content=ft.Text(responsable, size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
-                ft.IconButton(
-                    icon=ft.icons.TIMELINE,
-                    tooltip="Ver historial del activo",
-                    icon_size=18,
-                    icon_color=ThemeColors.ACCENT_BLUE,
-                    on_click=lambda e, it=item: navigate("item_traceability", item_id=it.get("id"), item_data=it),
-                ),
+                ft.Container(width=74, content=actions),
             ], spacing=10),
         )
+
+    def _open_edit_dialog(item: dict):
+        name_tf = ft.TextField(
+            label="Nombre del activo",
+            value=item.get("nombre") or "",
+            **JetBrainsTheme.input_style(),
+        )
+        factura_tf = ft.TextField(
+            label="Numero de Factura",
+            value=item.get("numero_factura") or "",
+            **JetBrainsTheme.input_style(),
+        )
+        marca_tf = ft.TextField(
+            label="Marca",
+            value=item.get("marca") or "",
+            **JetBrainsTheme.input_style(),
+        )
+        modelo_tf = ft.TextField(
+            label="Modelo",
+            value=item.get("modelo") or "",
+            **JetBrainsTheme.input_style(),
+        )
+        serial_tf = ft.TextField(
+            label="Serie",
+            value=item.get("serial") or "",
+            **JetBrainsTheme.input_style(),
+        )
+
+        responsible_edit_dd = ft.Dropdown(
+            label="Responsable",
+            options=[
+                ft.dropdown.Option(
+                    key=u.get("id"),
+                    text=f"{u.get('username', 'Usuario')} ({str(u.get('rol', '')).upper()})",
+                )
+                for u in users_all
+            ],
+            value=str(item.get("responsable_id") or "") or None,
+            **JetBrainsTheme.input_style(),
+        )
+
+        customer_edit_dd = ft.Dropdown(
+            label="Cliente",
+            options=[
+                ft.dropdown.Option(
+                    key=c.get("id"),
+                    text=(c.get("nombre_cliente") or "Cliente"),
+                )
+                for c in customers_all
+            ],
+            value=str(item.get("cliente_id") or "") or None,
+            **JetBrainsTheme.input_style(),
+        )
+
+        store_edit_dd = ft.Dropdown(
+            label="Bodega",
+            options=[
+                ft.dropdown.Option(
+                    key=s.get("id"),
+                    text=s.get("nombre_bodega") or "Bodega",
+                )
+                for s in stores_all
+            ],
+            value=str(item.get("ubicacion_actual_id") or "") or None,
+            **JetBrainsTheme.input_style(),
+        )
+
+        def do_save(e):
+            payload = {
+                "nombre": (name_tf.value or "").strip(),
+                "numero_factura": (factura_tf.value or "").strip(),
+                "marca": (marca_tf.value or "").strip(),
+                "modelo": (modelo_tf.value or "").strip(),
+                "serial": (serial_tf.value or "").strip(),
+                "responsable_id": responsible_edit_dd.value,
+                "responsable_nombre": next(
+                    (u.get("username", "") for u in users_all if str(u.get("id")) == str(responsible_edit_dd.value)),
+                    "",
+                ),
+                "cliente_id": customer_edit_dd.value,
+                "cliente_nombre": next(
+                    (c.get("nombre_cliente", "") for c in customers_all if str(c.get("id")) == str(customer_edit_dd.value)),
+                    "",
+                ),
+                "ubicacion_actual_id": store_edit_dd.value,
+            }
+
+            try:
+                APIClient.put(f"inventory/items/{item.get('id')}/", json=payload)
+                page.dialog.open = False
+                page.update()
+                show_snack("Registro actualizado correctamente")
+                threading.Thread(target=load_data, daemon=True).start()
+            except Exception as ex:
+                show_snack(f"No se pudo actualizar: {ex}", is_error=True)
+
+        page.dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Editar registro: {item.get('codigo') or 'Activo'}", weight="bold"),
+            content=ft.Container(
+                width=680,
+                content=ft.Column([
+                    name_tf,
+                    factura_tf,
+                    ft.Row([marca_tf, modelo_tf, serial_tf], spacing=10),
+                    ft.Row([responsible_edit_dd, customer_edit_dd], spacing=10),
+                    store_edit_dd,
+                ], spacing=10, scroll=ft.ScrollMode.AUTO),
+            ),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: setattr(page.dialog, "open", False) or page.update()),
+                ft.ElevatedButton("Guardar", style=JetBrainsTheme.primary_button_style(), on_click=do_save),
+            ],
+        )
+        page.dialog.open = True
+        page.update()
 
     def _kardex_row(mov: dict) -> ft.Control:
         item = mov.get("item") or {}
@@ -212,6 +343,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
             mov_payload = list_movements({"page": 1, "page_size": 50}) or {}
             users = list_users() or []
             customers = list_customers() or []
+            stores = list_stores() or []
             moves = mov_payload.get("results", []) if isinstance(mov_payload, dict) else []
 
             items_all.clear()
@@ -243,6 +375,9 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
             ]
             if not any(opt.key == cliente_dd.value for opt in cliente_dd.options):
                 cliente_dd.value = "TODOS"
+
+            stores_all.clear()
+            stores_all.extend(stores)
 
             _count_stats()
             apply_filters()
@@ -323,7 +458,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
                         ft.Container(width=100, content=ft.Text("UBICACIÓN", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
                         ft.Container(width=240, content=ft.Text("BODEGA", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
                         ft.Container(width=180, content=ft.Text("RESPONSABLE", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=32),
+                        ft.Container(width=74, content=ft.Text("ACCIONES", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
                     ], spacing=10),
                 ),
                 ft.Container(height=260, content=rows_assets),
