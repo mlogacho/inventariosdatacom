@@ -9,6 +9,7 @@ from views.items.item_view import item_view, create_item_view
 from views.items.category_item_view import category_item_view
 from views.items.item_traceability_view import item_traceability_view
 from views.movements.movement_view import movement_view
+from views.kardex.kardex_view import kardex_view
 from views.stores.store_view import store_view
 
 def menu_view(page: ft.Page):
@@ -32,6 +33,7 @@ def menu_view(page: ft.Page):
             "dashboard": ("Dashboard", dashboard_view),
             "items": ("Inventario de Activos", item_view),
             "create_item": ("Nuevo Activo", create_item_view),
+            "kardex": ("KARDEX de Activos", kardex_view),
             "movements": ("Trazabilidad de Movimientos", movement_view),
             "item_traceability": ("Trazabilidad de Activo", item_traceability_view),
             "category_items":   ("Inventario por Categoría", category_item_view),

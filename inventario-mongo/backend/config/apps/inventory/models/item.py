@@ -72,6 +72,7 @@ class Item(BaseDocument):
     marca  = me.StringField()
     modelo = me.StringField()
     serial = me.StringField()
+    numero_factura = me.StringField()
 
     estado = me.StringField(
         choices=ALL_ESTADOS,

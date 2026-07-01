@@ -880,12 +880,17 @@ def item_view(page: ft.Page, navigate):
 
 
 # ─── CREAR ACTIVO ─────────────────────────────────────────────────────────────
-def create_item_view(page: ft.Page, navigate):
+def create_item_view(page: ft.Page, navigate, **kwargs):
+    tipo_item_default = (kwargs.get("tipo_item_default") or "equipo").strip().lower()
+    if tipo_item_default not in {"equipo", "herramienta", "material", "general"}:
+        tipo_item_default = "equipo"
+
     codigo      = ft.TextField(label="Código SKU *", **JetBrainsTheme.input_style())
     nombre      = ft.TextField(label="Nombre del Activo *", **JetBrainsTheme.input_style())
     marca       = ft.TextField(label="Marca", **JetBrainsTheme.input_style())
     modelo      = ft.TextField(label="Modelo", **JetBrainsTheme.input_style())
     serial      = ft.TextField(label="Número de Serie", **JetBrainsTheme.input_style())
+    numero_factura = ft.TextField(label="Número de Factura", **JetBrainsTheme.input_style())
     crit_dd     = ft.Dropdown(
         label="Criticidad",
         value="media",
@@ -898,7 +903,7 @@ def create_item_view(page: ft.Page, navigate):
     )
     tipo_item_dd = ft.Dropdown(
         label="Tipo de Ítem *",
-        value="equipo",
+        value=tipo_item_default,
         options=[
             ft.dropdown.Option("equipo",      text="Equipo"),
             ft.dropdown.Option("herramienta", text="Herramienta"),
@@ -927,6 +932,7 @@ def create_item_view(page: ft.Page, navigate):
         page.update()
 
     tipo_item_dd.on_change = on_tipo_change
+    on_tipo_change(None)
 
     def load_data():
         try:
@@ -976,6 +982,7 @@ def create_item_view(page: ft.Page, navigate):
             "marca":               marca.value.strip(),
             "modelo":              modelo.value.strip(),
             "serial":              serial.value.strip(),
+            "numero_factura":      numero_factura.value.strip(),
             "criticidad":          crit_dd.value or "media",
             "tipo_item":           tipo_item_dd.value or "equipo",
             "cantidad":            qty,
@@ -1007,6 +1014,7 @@ def create_item_view(page: ft.Page, navigate):
                     ft.Column([marca],            col={"xs": 12, "md": 4}),
                     ft.Column([modelo],           col={"xs": 12, "md": 4}),
                     ft.Column([serial],           col={"xs": 12, "md": 4}),
+                    ft.Column([numero_factura],   col={"xs": 12, "md": 6}),
                     ft.Column([tipo_item_dd],     col={"xs": 12, "md": 4}),
                     ft.Column([crit_dd],          col={"xs": 12, "md": 4}),
                     ft.Column([cantidad_row],     col={"xs": 12, "md": 4}),
