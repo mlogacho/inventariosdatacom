@@ -25,6 +25,10 @@ class ItemSerializer(serializers.Serializer):
     modelo = serializers.CharField(required=False, allow_blank=True)
     serial = serializers.CharField(required=False, allow_blank=True)
     numero_factura = serializers.CharField(required=False, allow_blank=True)
+    responsable_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    responsable_nombre = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    cliente_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    cliente_nombre = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     estado = serializers.ChoiceField(
         choices=ALL_ESTADOS,

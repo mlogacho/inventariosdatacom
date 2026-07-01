@@ -12,6 +12,8 @@ from services.facility_service import search_facilities
 from services.category_service import list_categories
 from services.subcategory_service import list_subcategories
 from services.store_service import list_stores
+from services.user_service import list_users
+from services.customer_service import list_customers
 
 
 def show_snack(page, msg, is_error=False):
@@ -891,6 +893,8 @@ def create_item_view(page: ft.Page, navigate, **kwargs):
     modelo      = ft.TextField(label="Modelo", **JetBrainsTheme.input_style())
     serial      = ft.TextField(label="Número de Serie", **JetBrainsTheme.input_style())
     numero_factura = ft.TextField(label="Número de Factura", **JetBrainsTheme.input_style())
+    responsable_dd = ft.Dropdown(label="Responsable *", **JetBrainsTheme.input_style())
+    cliente_dd = ft.Dropdown(label="Cliente *", **JetBrainsTheme.input_style())
     crit_dd     = ft.Dropdown(
         label="Criticidad",
         value="media",
@@ -923,6 +927,9 @@ def create_item_view(page: ft.Page, navigate, **kwargs):
     subcategoria_dd = ft.Dropdown(label="Subcategoría *", disabled=True, **JetBrainsTheme.input_style())
     bodega_dd       = ft.Dropdown(label="Bodega de Ingreso *", **JetBrainsTheme.input_style())
 
+    users_map = {}
+    customers_map = {}
+
     cantidad_row = ft.Column([cantidad_tf], visible=False)
 
     def on_tipo_change(_):
@@ -938,8 +945,31 @@ def create_item_view(page: ft.Page, navigate, **kwargs):
         try:
             cats   = list_categories() or []
             stores = list_stores() or []
+            users  = list_users() or []
+            customers = list_customers() or []
             categoria_dd.options = [ft.dropdown.Option(key=c["id"], text=c["nombre_categoria"]) for c in cats]
             bodega_dd.options    = [ft.dropdown.Option(key=s["id"], text=s["nombre_bodega"]) for s in stores]
+            users_map.clear()
+            for u in users:
+                users_map[u["id"]] = u
+            responsable_dd.options = [
+                ft.dropdown.Option(
+                    key=u["id"],
+                    text=f"{u.get('username', 'Usuario')} ({str(u.get('rol', '')).upper()})",
+                )
+                for u in users
+            ]
+
+            customers_map.clear()
+            for c in customers:
+                customers_map[c["id"]] = c
+            cliente_dd.options = [
+                ft.dropdown.Option(
+                    key=c["id"],
+                    text=(c.get("nombre_cliente") or "Cliente"),
+                )
+                for c in customers
+            ]
             page.update()
         except Exception as ex:
             show_snack(page, f"Error al cargar catálogos: {ex}", True)
@@ -965,6 +995,12 @@ def create_item_view(page: ft.Page, navigate, **kwargs):
         if not codigo.value or not nombre.value or not subcategoria_dd.value or not bodega_dd.value:
             show_snack(page, "Completa los campos obligatorios (*)", True)
             return
+        if not responsable_dd.value:
+            show_snack(page, "Selecciona un responsable", True)
+            return
+        if not cliente_dd.value:
+            show_snack(page, "Selecciona un cliente", True)
+            return
         if tipo_item_dd.value == "material":
             try:
                 qty = int(cantidad_tf.value or 0)
@@ -983,6 +1019,10 @@ def create_item_view(page: ft.Page, navigate, **kwargs):
             "modelo":              modelo.value.strip(),
             "serial":              serial.value.strip(),
             "numero_factura":      numero_factura.value.strip(),
+            "responsable_id":      responsable_dd.value,
+            "responsable_nombre":  (users_map.get(responsable_dd.value) or {}).get("username", ""),
+            "cliente_id":          cliente_dd.value,
+            "cliente_nombre":      (customers_map.get(cliente_dd.value) or {}).get("nombre_cliente", ""),
             "criticidad":          crit_dd.value or "media",
             "tipo_item":           tipo_item_dd.value or "equipo",
             "cantidad":            qty,
@@ -1015,6 +1055,8 @@ def create_item_view(page: ft.Page, navigate, **kwargs):
                     ft.Column([modelo],           col={"xs": 12, "md": 4}),
                     ft.Column([serial],           col={"xs": 12, "md": 4}),
                     ft.Column([numero_factura],   col={"xs": 12, "md": 6}),
+                    ft.Column([responsable_dd],   col={"xs": 12, "md": 3}),
+                    ft.Column([cliente_dd],       col={"xs": 12, "md": 3}),
                     ft.Column([tipo_item_dd],     col={"xs": 12, "md": 4}),
                     ft.Column([crit_dd],          col={"xs": 12, "md": 4}),
                     ft.Column([cantidad_row],     col={"xs": 12, "md": 4}),

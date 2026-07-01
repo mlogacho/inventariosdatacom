@@ -4,6 +4,8 @@ import threading
 from core.theme import ThemeColors, JetBrainsTheme
 from services.item_service import list_items
 from services.movement_service import list_movements
+from services.user_service import list_users
+from services.customer_service import list_customers
 
 
 def _location_type(item: dict) -> str:
@@ -39,6 +41,8 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
     items_all = []
     items_filtered = []
     movements_recent = []
+    users_all = []
+    customers_all = []
 
     loading = ft.ProgressBar(visible=False, color=ThemeColors.ACCENT_BLUE)
 
@@ -61,6 +65,20 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
             ft.dropdown.Option("BODEGA"),
             ft.dropdown.Option("CLIENTE"),
         ],
+        **JetBrainsTheme.input_style(),
+    )
+    responsable_dd = ft.Dropdown(
+        label="Responsable",
+        value="TODOS",
+        width=240,
+        options=[ft.dropdown.Option("TODOS")],
+        **JetBrainsTheme.input_style(),
+    )
+    cliente_dd = ft.Dropdown(
+        label="Cliente",
+        value="TODOS",
+        width=280,
+        options=[ft.dropdown.Option("TODOS")],
         **JetBrainsTheme.input_style(),
     )
 
@@ -88,6 +106,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
     def _asset_row(item: dict) -> ft.Control:
         loc_type = _location_type(item)
         loc_color = ThemeColors.ACCENT_BLUE if loc_type == "BODEGA" else ThemeColors.ACCENT_MAGENTA
+        responsable = item.get("responsable_nombre") or "---"
         return ft.Container(
             padding=ft.padding.symmetric(horizontal=14, vertical=8),
             border=ft.border.only(bottom=ft.BorderSide(1, ft.colors.with_opacity(0.05, ft.colors.WHITE))),
@@ -97,7 +116,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
                 ft.Container(width=120, content=ft.Text(item.get("estado", "---"), size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
                 ft.Container(width=100, content=ft.Text(loc_type, size=11, weight="bold", color=loc_color)),
                 ft.Container(width=240, content=ft.Text(_read_loc_name(item), size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
-                ft.Container(width=120, content=ft.Text(item.get("ot_id") or "---", size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
+                ft.Container(width=180, content=ft.Text(responsable, size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
                 ft.IconButton(
                     icon=ft.icons.TIMELINE,
                     tooltip="Ver historial del activo",
@@ -156,10 +175,16 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
     def apply_filters(e=None):
         search = (search_tf.value or "").strip().lower()
         where = (where_dd.value or "TODOS").strip().upper()
+        responsible_id = (responsable_dd.value or "TODOS").strip()
+        customer_id = (cliente_dd.value or "TODOS").strip()
 
         items_filtered.clear()
         for it in items_all:
             if where != "TODOS" and _location_type(it) != where:
+                continue
+            if responsible_id != "TODOS" and str(it.get("responsable_id") or "") != responsible_id:
+                continue
+            if customer_id != "TODOS" and str(it.get("cliente_id") or "") != customer_id:
                 continue
             if search:
                 haystack = " ".join([
@@ -176,6 +201,8 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 
     search_tf.on_change = apply_filters
     where_dd.on_change = apply_filters
+    responsable_dd.on_change = apply_filters
+    cliente_dd.on_change = apply_filters
 
     def load_data():
         loading.visible = True
@@ -183,6 +210,8 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
         try:
             items = list_items({}) or []
             mov_payload = list_movements({"page": 1, "page_size": 50}) or {}
+            users = list_users() or []
+            customers = list_customers() or []
             moves = mov_payload.get("results", []) if isinstance(mov_payload, dict) else []
 
             items_all.clear()
@@ -190,6 +219,30 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 
             movements_recent.clear()
             movements_recent.extend(moves)
+
+            users_all.clear()
+            users_all.extend(users)
+            responsable_dd.options = [ft.dropdown.Option("TODOS")] + [
+                ft.dropdown.Option(
+                    key=u.get("id"),
+                    text=f"{u.get('username', 'Usuario')} ({str(u.get('rol', '')).upper()})",
+                )
+                for u in users_all
+            ]
+            if not any(opt.key == responsable_dd.value for opt in responsable_dd.options):
+                responsable_dd.value = "TODOS"
+
+            customers_all.clear()
+            customers_all.extend(customers)
+            cliente_dd.options = [ft.dropdown.Option("TODOS")] + [
+                ft.dropdown.Option(
+                    key=c.get("id"),
+                    text=(c.get("nombre_cliente") or "Cliente"),
+                )
+                for c in customers_all
+            ]
+            if not any(opt.key == cliente_dd.value for opt in cliente_dd.options):
+                cliente_dd.value = "TODOS"
 
             _count_stats()
             apply_filters()
@@ -254,6 +307,8 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
                 ft.Row([
                     search_tf,
                     where_dd,
+                    responsable_dd,
+                    cliente_dd,
                 ], spacing=12, wrap=True),
                 loading,
                 ft.Divider(height=1, color=ft.colors.with_opacity(0.08, ft.colors.WHITE)),
@@ -267,7 +322,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
                         ft.Container(width=120, content=ft.Text("ESTADO", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
                         ft.Container(width=100, content=ft.Text("UBICACIÓN", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
                         ft.Container(width=240, content=ft.Text("BODEGA", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=120, content=ft.Text("OT", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
+                        ft.Container(width=180, content=ft.Text("RESPONSABLE", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
                         ft.Container(width=32),
                     ], spacing=10),
                 ),
