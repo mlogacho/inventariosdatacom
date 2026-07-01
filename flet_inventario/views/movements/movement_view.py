@@ -121,9 +121,10 @@ def movement_view(page: ft.Page, navigate, **kwargs):
     stats_row = ft.Row(spacing=16, scroll="auto")
     compact_title = ft.Text("", size=14, weight="bold", color=ThemeColors.TEXT_PRIMARY)
     compact_total = ft.Text("", size=12, color=ThemeColors.TEXT_SECONDARY)
-    compact_rows = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, expand=True)
+    compact_rows = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO)
     compact_panel = ft.Container(
         visible=False,
+        height=260,
         **JetBrainsTheme.card_style(),
         content=ft.Column([
             ft.Row([
@@ -139,7 +140,7 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                 ),
             ], alignment="spaceBetween"),
             ft.Divider(height=1, color=ft.colors.with_opacity(0.08, ft.colors.WHITE)),
-            compact_rows,
+            ft.Container(content=compact_rows, expand=True),
         ], spacing=8),
     )
 
