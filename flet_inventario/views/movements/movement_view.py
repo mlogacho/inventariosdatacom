@@ -52,7 +52,7 @@ def _tipo_chip(tipo: str) -> ft.Container:
     )
 
 
-def movement_view(page: ft.Page, navigate):
+def movement_view(page: ft.Page, navigate, **kwargs):
     # =========================================================================
     # ESTADO Y VARIABLES
     # =========================================================================
@@ -492,6 +492,12 @@ def movement_view(page: ft.Page, navigate):
     import threading
     threading.Timer(0.1, load_stats).start()
     threading.Timer(0.2, apply_filters).start()
+
+    compact_mode = str(kwargs.get("open_compact") or "").upper()
+    if compact_mode == "STOCK":
+        threading.Timer(0.25, lambda: open_items_by_location("STOCK")).start()
+    elif compact_mode == "TOTAL":
+        threading.Timer(0.25, lambda: open_items_by_location()).start()
 
     # =========================================================================
     # LAYOUT PRINCIPAL

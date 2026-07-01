@@ -25,8 +25,22 @@ def dashboard_view(page: ft.Page, navigate):
     ], spacing=15)
 
     cards = ft.ResponsiveRow([
-        ft.Column([stats_card("Activos Totales", str(stats.get("total_items", 0)), ft.icons.INVENTORY)], col={"sm": 6, "md": 3}),
-        ft.Column([stats_card("En Stock", str(stats.get("stats_by_state", {}).get("STOCK", 0)), ft.icons.WAREHOUSE)], col={"sm": 6, "md": 3}),
+        ft.Column([
+            stats_card(
+                "Activos Totales",
+                str(stats.get("total_items", 0)),
+                ft.icons.INVENTORY,
+                on_click=lambda e: navigate("movements", open_compact="TOTAL"),
+            )
+        ], col={"sm": 6, "md": 3}),
+        ft.Column([
+            stats_card(
+                "En Stock",
+                str(stats.get("stats_by_state", {}).get("STOCK", 0)),
+                ft.icons.WAREHOUSE,
+                on_click=lambda e: navigate("movements", open_compact="STOCK"),
+            )
+        ], col={"sm": 6, "md": 3}),
         ft.Column([stats_card("Reservados", str(stats.get("stats_by_state", {}).get("RESERVADO", 0)), ft.icons.VPN_KEY)], col={"sm": 6, "md": 3}),
         ft.Column([stats_card("Movimientos", str(stats.get("movements_today", 0)), ft.icons.SYNC)], col={"sm": 6, "md": 3}),
     ], spacing=20)
