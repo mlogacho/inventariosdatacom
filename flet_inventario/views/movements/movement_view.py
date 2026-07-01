@@ -147,6 +147,20 @@ def movement_view(page: ft.Page, navigate, **kwargs):
     # Loader
     loading = ft.ProgressBar(visible=False, color=ThemeColors.ACCENT_BLUE)
 
+    inventory_hint_title = ft.Text("Coincidencias en Inventario", size=14, weight="bold", color=ThemeColors.TEXT_PRIMARY)
+    inventory_hint_rows = ft.Column(spacing=6)
+    inventory_hint_panel = ft.Container(
+        visible=False,
+        **JetBrainsTheme.card_style(),
+        content=ft.Column([
+            ft.Row([
+                ft.Icon(ft.icons.INVENTORY_2, color=ThemeColors.ACCENT_BLUE, size=18),
+                inventory_hint_title,
+            ], spacing=8),
+            inventory_hint_rows,
+        ], spacing=8),
+    )
+
     def close_compact_panel():
         compact_panel.visible = False
         page.update()
@@ -183,6 +197,8 @@ def movement_view(page: ft.Page, navigate, **kwargs):
 
     def apply_filters(e=None):
         loading.visible = True
+        inventory_hint_panel.visible = False
+        inventory_hint_rows.controls = []
         page.update()
 
         params = {"page_size": 100}
@@ -210,13 +226,49 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                 results = data
                 total   = len(results)
 
+            # Apoyo de claridad: búsqueda paralela en inventario para mostrar
+            # descripción/cantidad aun cuando no existan movimientos del código.
+            search_value = (search_tf.value or "").strip()
+            if search_value:
+                try:
+                    inv_matches = list_items({"search": search_value, "page_size": 10}) or []
+                    if inv_matches:
+                        inventory_hint_rows.controls = [
+                            ft.Row([
+                                ft.Text("Código", color=ThemeColors.TEXT_SECONDARY, weight="bold", width=170),
+                                ft.Text("Descripción", color=ThemeColors.TEXT_SECONDARY, weight="bold", expand=True),
+                                ft.Text("Stock", color=ThemeColors.TEXT_SECONDARY, weight="bold", width=80),
+                                ft.Text("Estado", color=ThemeColors.TEXT_SECONDARY, weight="bold", width=120),
+                            ])
+                        ]
+
+                        for inv in inv_matches[:8]:
+                            inventory_hint_rows.controls.append(
+                                ft.Container(
+                                    padding=ft.padding.symmetric(horizontal=8, vertical=6),
+                                    border_radius=8,
+                                    bgcolor=ft.colors.with_opacity(0.04, ft.colors.WHITE),
+                                    content=ft.Row([
+                                        ft.Text(str(inv.get("codigo") or "---"), width=170, color=ThemeColors.ACCENT_BLUE, weight="bold"),
+                                        ft.Text(str(inv.get("nombre") or "---"), expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                                        ft.Text(str(inv.get("cantidad") if inv.get("cantidad") is not None else 0), width=80),
+                                        ft.Text(str(inv.get("estado") or "---"), width=120),
+                                    ], spacing=10),
+                                )
+                            )
+
+                        inventory_hint_title.value = "Coincidencias en Inventario"
+                        inventory_hint_panel.visible = True
+                except Exception as inv_ex:
+                    print(f"Error consultando inventario para busqueda: {inv_ex}")
+
             table.rows.clear()
 
             if not results:
                 table.rows.append(
                     ft.DataRow(cells=[
                         ft.DataCell(ft.Text(
-                            "No se encontraron movimientos",
+                            "No se encontraron movimientos para este filtro",
                             italic=True,
                             color=ThemeColors.TEXT_SECONDARY
                         )),
@@ -512,6 +564,7 @@ def movement_view(page: ft.Page, navigate, **kwargs):
             location_filter_label,
             clear_location_btn,
         ], spacing=10),
+        inventory_hint_panel,
         loading,
         ft.Container(
             **JetBrainsTheme.card_style(),
