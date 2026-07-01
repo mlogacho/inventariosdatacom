@@ -110,9 +110,36 @@ def movement_view(page: ft.Page, navigate):
     page_label = ft.Text("", size=12, color=ThemeColors.TEXT_SECONDARY)
 
     stats_row = ft.Row(spacing=16, scroll="auto")
+    compact_title = ft.Text("", size=14, weight="bold", color=ThemeColors.TEXT_PRIMARY)
+    compact_total = ft.Text("", size=12, color=ThemeColors.TEXT_SECONDARY)
+    compact_rows = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, expand=True)
+    compact_panel = ft.Container(
+        visible=False,
+        **JetBrainsTheme.card_style(),
+        content=ft.Column([
+            ft.Row([
+                ft.Icon(ft.icons.MAP, color=ThemeColors.ACCENT_BLUE, size=18),
+                compact_title,
+                ft.Container(expand=True),
+                compact_total,
+                ft.IconButton(
+                    icon=ft.icons.CLOSE,
+                    tooltip="Cerrar vista compacta",
+                    icon_color=ThemeColors.TEXT_SECONDARY,
+                    on_click=lambda e: close_compact_panel(),
+                ),
+            ], alignment="spaceBetween"),
+            ft.Divider(height=1, color=ft.colors.with_opacity(0.08, ft.colors.WHITE)),
+            compact_rows,
+        ], spacing=8),
+    )
 
     # Loader
     loading = ft.ProgressBar(visible=False, color=ThemeColors.ACCENT_BLUE)
+
+    def close_compact_panel():
+        compact_panel.visible = False
+        page.update()
 
     # =========================================================================
     # ACCIONES
@@ -345,38 +372,34 @@ def movement_view(page: ft.Page, navigate):
                 grouped[loc_name] = grouped.get(loc_name, 0) + 1
 
             rows = sorted(grouped.items(), key=lambda x: x[1], reverse=True)
-            title = "Activos En Stock por Ubicación" if estado == "STOCK" else "Activos Totales por Ubicación"
+            compact_title.value = "Activos En Stock por Ubicación" if estado == "STOCK" else "Activos Totales por Ubicación"
+            compact_total.value = f"{len(items)} activo(s)"
+            compact_rows.controls = [
+                ft.Row([
+                    ft.Text("Ubicación", weight="bold", color=ThemeColors.TEXT_SECONDARY, expand=True),
+                    ft.Text("Cantidad", weight="bold", color=ThemeColors.TEXT_SECONDARY),
+                ])
+            ]
 
-            page.dialog = ft.AlertDialog(
-                modal=True,
-                title=ft.Text(title, weight="bold"),
-                content=ft.Container(
-                    width=560,
-                    height=420,
-                    content=ft.Column(
-                        [
-                            ft.Row([
-                                ft.Text("Ubicación", weight="bold", color=ThemeColors.TEXT_SECONDARY, expand=True),
-                                ft.Text("Cantidad", weight="bold", color=ThemeColors.TEXT_SECONDARY),
-                            ]),
-                            ft.Divider(height=1, color=ft.colors.with_opacity(0.08, ft.colors.WHITE)),
-                            ft.Column([
-                                ft.Row([
-                                    ft.Text(name, expand=True),
-                                    ft.Text(str(count), weight="bold", color=ThemeColors.ACCENT_BLUE),
-                                ])
-                                for name, count in rows
-                            ], spacing=8, scroll=ft.ScrollMode.AUTO, expand=True),
-                        ],
-                        spacing=10,
-                        expand=True,
-                    ),
-                ),
-                actions=[
-                    ft.TextButton("Cerrar", on_click=lambda e: setattr(page.dialog, "open", False) or page.update())
-                ],
-            )
-            page.dialog.open = True
+            if rows:
+                compact_rows.controls.extend([
+                    ft.Container(
+                        padding=ft.padding.symmetric(horizontal=8, vertical=6),
+                        border_radius=8,
+                        bgcolor=ft.colors.with_opacity(0.04, ft.colors.WHITE),
+                        content=ft.Row([
+                            ft.Text(name, expand=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            ft.Text(str(count), weight="bold", color=ThemeColors.ACCENT_BLUE),
+                        ]),
+                    )
+                    for name, count in rows
+                ])
+            else:
+                compact_rows.controls.append(
+                    ft.Text("No hay activos para este criterio", italic=True, color=ThemeColors.TEXT_SECONDARY)
+                )
+
+            compact_panel.visible = True
         except Exception as ex:
             print(f"Error cargando activos por ubicacion: {ex}")
         finally:
@@ -422,6 +445,7 @@ def movement_view(page: ft.Page, navigate):
     # =========================================================================
     return ft.Column([
         stats_row,
+        compact_panel,
         ft.Container(height=4),
         filter_bar,
         loading,
