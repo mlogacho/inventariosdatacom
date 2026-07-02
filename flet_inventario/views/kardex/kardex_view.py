@@ -447,6 +447,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			),
 			content=ft.Container(
 				width=760,
+				height=560,
 				padding=20,
 				border_radius=18,
 				bgcolor=ft.colors.with_opacity(0.03, ft.colors.WHITE),
@@ -466,7 +467,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 						ft.Row([customer_edit_search_tf, customer_edit_dd], spacing=10, wrap=True),
 					],
 					spacing=10,
-					tight=True,
+					scroll=ft.ScrollMode.AUTO,
 				),
 			),
 			actions=[
