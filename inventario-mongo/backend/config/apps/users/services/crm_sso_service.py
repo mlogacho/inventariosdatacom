@@ -63,3 +63,40 @@ def get_crm_active_clients(token: str, search: str | None = None) -> list[dict]:
         return True
 
     return [c for c in records if isinstance(c, dict) and is_active_client(c)]
+
+
+def get_crm_active_users(token: str, search: str | None = None) -> list[dict]:
+    params = {"search": search or "", "page_size": 200}
+    data = _crm_get("/api/core/users/", token, params=params)
+    records = data.get("results", data) if isinstance(data, dict) else data
+    if not isinstance(records, list):
+        return []
+
+    def is_active_user(item: dict) -> bool:
+        if item.get("is_active") is False:
+            return False
+        return bool((item.get("username") or "").strip())
+
+    normalized = []
+    for u in records:
+        if not isinstance(u, dict) or not is_active_user(u):
+            continue
+
+        first_name = (u.get("first_name") or "").strip()
+        last_name = (u.get("last_name") or "").strip()
+        full_name = (u.get("full_name") or "").strip()
+        username = (u.get("username") or "").strip()
+        if not full_name:
+            full_name = " ".join(part for part in [first_name, last_name] if part).strip()
+        if not full_name:
+            full_name = username
+
+        profile = u.get("profile") or {}
+        role_name = (profile.get("role_name") or "").strip() if isinstance(profile, dict) else ""
+
+        record = dict(u)
+        record["full_name"] = full_name
+        record["role_name"] = role_name
+        normalized.append(record)
+
+    return normalized

@@ -2,6 +2,30 @@
 
 Todas las modificaciones relevantes del proyecto se registran en este archivo.
 
+## [2026-07-01] - KARDEX consolidado, CRM activo y edicion segura
+
+### Agregado
+- Vista consolidada de KARDEX con un endpoint unificado para activos, movimientos, estadisticas, catalogos y paginacion.
+- Integracion de responsables desde usuarios activos de CRM.
+- Integracion de clientes desde CRM y clientes locales del sistema.
+- Busqueda segura de clientes por codigo o nombre con campo auxiliar independiente.
+
+### Cambiado
+- Se elimino la columna `OT` del listado principal de activos y se introdujo `Responsable` como columna visible.
+- Se normalizaron los nombres completos de usuarios CRM combinando nombre y apellido cuando corresponde.
+- El modal de edicion del KARDEX ahora permite editar cada registro de forma individual.
+- El campo `Serie` quedo editable en la vista de KARDEX.
+
+### Corregido
+- Se evito el comportamiento visual de desactivado en el dropdown de clientes al no usar filtros avanzados sobre el control base.
+- Se unificaron los anchos de las tablas para mantener alineadas las cabeceras con las filas.
+- Se restauro la trazabilidad de activos desde la fila del KARDEX.
+
+### Verificado
+- Validacion local de sintaxis del frontend sin errores.
+- Despliegue del frontend completado en produccion.
+- Health check del frontend en `8070` respondiendo `200`.
+
 ## [2026-06-30] - Fix definitivo SSO ERP (sin pantalla de acceso manual)
 
 ### Corregido

@@ -12,7 +12,7 @@ from services.facility_service import search_facilities
 from services.category_service import list_categories
 from services.subcategory_service import list_subcategories
 from services.store_service import list_stores
-from services.user_service import list_users
+from services.user_service import list_crm_users
 from services.customer_service import list_customers
 
 
@@ -945,31 +945,52 @@ def create_item_view(page: ft.Page, navigate, **kwargs):
         try:
             cats   = list_categories() or []
             stores = list_stores() or []
-            users  = list_users() or []
-            customers = list_customers() or []
+            users_raw = list_crm_users() or []
+            customers_raw = list_customers() or []
+
+            users = [
+                u for u in users_raw
+                if isinstance(u, dict)
+                and u.get("id") is not None
+                and (u.get("is_active", True) is not False)
+            ]
+            customers = [
+                c for c in customers_raw
+                if isinstance(c, dict)
+                and c.get("id") is not None
+                and (c.get("nombre_cliente") or "").strip()
+                and str(c.get("classification") or "ACTIVE").upper() not in {"INACTIVE", "INACTIVO", "SUSPENDED"}
+            ]
             categoria_dd.options = [ft.dropdown.Option(key=c["id"], text=c["nombre_categoria"]) for c in cats]
             bodega_dd.options    = [ft.dropdown.Option(key=s["id"], text=s["nombre_bodega"]) for s in stores]
             users_map.clear()
             for u in users:
-                users_map[u["id"]] = u
+                uid = str(u.get("id"))
+                users_map[uid] = u
             responsable_dd.options = [
                 ft.dropdown.Option(
-                    key=u["id"],
-                    text=f"{u.get('username', 'Usuario')} ({str(u.get('rol', '')).upper()})",
+                    key=str(u.get("id")),
+                    text=(u.get("full_name") or u.get("username") or "Usuario"),
                 )
                 for u in users
             ]
 
             customers_map.clear()
             for c in customers:
-                customers_map[c["id"]] = c
+                cid = str(c.get("id"))
+                customers_map[cid] = c
             cliente_dd.options = [
                 ft.dropdown.Option(
-                    key=c["id"],
+                    key=str(c.get("id")),
                     text=(c.get("nombre_cliente") or "Cliente"),
                 )
                 for c in customers
             ]
+
+            if not responsable_dd.options:
+                show_snack(page, "No se encontraron usuarios activos para Responsable", True)
+            if not cliente_dd.options:
+                show_snack(page, "No se encontraron clientes activos en CRM", True)
             page.update()
         except Exception as ex:
             show_snack(page, f"Error al cargar catálogos: {ex}", True)
@@ -1001,6 +1022,12 @@ def create_item_view(page: ft.Page, navigate, **kwargs):
         if not cliente_dd.value:
             show_snack(page, "Selecciona un cliente", True)
             return
+        if responsable_dd.value not in users_map:
+            show_snack(page, "Responsable inválido. Recarga y selecciona un usuario activo.", True)
+            return
+        if cliente_dd.value not in customers_map:
+            show_snack(page, "Cliente inválido. Recarga y selecciona un cliente activo de CRM.", True)
+            return
         if tipo_item_dd.value == "material":
             try:
                 qty = int(cantidad_tf.value or 0)
@@ -1020,7 +1047,10 @@ def create_item_view(page: ft.Page, navigate, **kwargs):
             "serial":              serial.value.strip(),
             "numero_factura":      numero_factura.value.strip(),
             "responsable_id":      responsable_dd.value,
-            "responsable_nombre":  (users_map.get(responsable_dd.value) or {}).get("username", ""),
+            "responsable_nombre":  (
+                (users_map.get(responsable_dd.value) or {}).get("full_name")
+                or (users_map.get(responsable_dd.value) or {}).get("username", "")
+            ),
             "cliente_id":          cliente_dd.value,
             "cliente_nombre":      (customers_map.get(cliente_dd.value) or {}).get("nombre_cliente", ""),
             "criticidad":          crit_dd.value or "media",

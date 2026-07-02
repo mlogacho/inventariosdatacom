@@ -40,7 +40,7 @@ from config.apps.inventory.views.customer_views import (
     CustomerListCreateView,
     CustomerDetailView,
 )
-from config.apps.inventory.views.crm_customer_views import CRMActiveCustomerListView
+from config.apps.inventory.views.crm_customer_views import CRMActiveCustomerListView, CRMActiveUserListView
 
 # =========================
 # MOVEMENTS (TRAZABILIDAD — APPEND-ONLY)
@@ -52,6 +52,7 @@ from config.apps.inventory.views.movement_views import (
     MovementStatsView,
 )
 
+from config.apps.inventory.views.kardex_views import KardexDashboardView
 
 urlpatterns = [
     # CATEGORY
@@ -75,6 +76,7 @@ urlpatterns = [
     path("customers/", CustomerListCreateView.as_view(), name="customer-list-create"),
     path("customers/<str:pk>/", CustomerDetailView.as_view(), name="customer-detail"),
     path("crm/customers/", CRMActiveCustomerListView.as_view(), name="crm-active-customers"),
+    path("crm/users/", CRMActiveUserListView.as_view(), name="crm-active-users"),
 
     # MOVEMENTS — Trazabilidad (APPEND-ONLY, sin DELETE ni UPDATE)
     # Lista global + creación
@@ -82,4 +84,6 @@ urlpatterns = [
     path("movements/stats/", MovementStatsView.as_view(), name="movement-stats"),
     # V-24 Fix: Historial paginado por ítem específico
     path("movements/<str:item_id>/history/", MovementItemHistoryView.as_view(), name="movement-item-history"),
+
+    path("kardex/", KardexDashboardView.as_view(), name="kardex-dashboard"),
 ]

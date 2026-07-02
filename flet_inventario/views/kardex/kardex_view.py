@@ -1,489 +1,788 @@
-import flet as ft
 import threading
 
-from core.theme import ThemeColors, JetBrainsTheme
+import flet as ft
+
 from core.api_client import APIClient
-from services.item_service import list_items
-from services.movement_service import list_movements
-from services.user_service import list_users
-from services.customer_service import list_customers
-from services.store_service import list_stores
+from core.theme import ThemeColors, JetBrainsTheme
+from services.kardex_service import get_kardex_dashboard
+
+ASSET_TABLE_WIDTH = 1370
+MOV_TABLE_WIDTH = 1260
+
+ASSET_TABLE_COLUMNS = [
+	("CÓDIGO", 120),
+	("ACTIVO", 260),
+	("ESTADO", 120),
+	("UBICACIÓN", 100),
+	("BODEGA", 240),
+	("RESPONSABLE", 180),
+	("CALIDAD", 120),
+	("ACCIONES", 74),
+]
+
+MOV_TABLE_COLUMNS = [
+	("FECHA", 150),
+	("CÓDIGO", 120),
+	("ACTIVO", 230),
+	("TIPO", 145),
+	("ORIGEN", 220),
+	("DESTINO", 220),
+	("OT", 120),
+]
 
 
 def _location_type(item: dict) -> str:
-    estado = str(item.get("estado") or "").upper()
-    if estado in {"INSTALADO_CLIENTE", "ACTIVO_EN_CAMPO"}:
-        return "CLIENTE"
-    if item.get("ot_id") and estado in {"RESERVADO", "SALIDA_INSTALACION", "INSTALADO_CLIENTE"}:
-        return "CLIENTE"
-    return "BODEGA"
+	estado = str(item.get("estado") or "").upper()
+	if estado in {"INSTALADO_CLIENTE", "ACTIVO_EN_CAMPO"}:
+		return "CLIENTE"
+	if item.get("ot_id") and estado in {"RESERVADO", "SALIDA_INSTALACION", "INSTALADO_CLIENTE"}:
+		return "CLIENTE"
+	return "BODEGA"
 
 
 def _read_loc_name(item: dict) -> str:
-    return item.get("ubicacion_nombre") or "Sin bodega registrada"
+	return item.get("ubicacion_nombre") or "Sin bodega registrada"
 
 
 def _read_target_name(value) -> str:
-    if isinstance(value, dict):
-        tipo = str(value.get("tipo") or "").upper()
-        nombre = (
-            value.get("nombre")
-            or value.get("nombre_bodega")
-            or value.get("nombre_cliente")
-            or value.get("id")
-            or "---"
-        )
-        return f"{tipo}: {nombre}" if tipo else str(nombre)
-    if value in (None, ""):
-        return "---"
-    return str(value)
+	if isinstance(value, dict):
+		tipo = str(value.get("tipo") or "").upper()
+		nombre = (
+			value.get("nombre")
+			or value.get("nombre_bodega")
+			or value.get("nombre_cliente")
+			or value.get("id")
+			or "---"
+		)
+		return f"{tipo}: {nombre}" if tipo else str(nombre)
+	if value in (None, ""):
+		return "---"
+	return str(value)
+
+
+def _missing_flags(item: dict) -> tuple[bool, bool, bool]:
+	missing_bodega = not bool(item.get("ubicacion_actual_id"))
+	missing_responsable = not bool(str(item.get("responsable_nombre") or "").strip())
+	missing_cliente = not bool(str(item.get("cliente_nombre") or "").strip())
+	return missing_bodega, missing_responsable, missing_cliente
+
+
+def _priority_label(item: dict) -> tuple[str, str, int]:
+	missing_bodega, missing_responsable, missing_cliente = _missing_flags(item)
+	score = int(missing_bodega) + int(missing_responsable) + int(missing_cliente)
+	if score >= 2:
+		return "CRITICO", ft.colors.RED_300, score
+	if score == 1:
+		return "PENDIENTE", ft.colors.AMBER_300, score
+	return "OK", ft.colors.GREEN_300, score
+
+
+def _customer_label(customer: dict) -> str:
+	code = str(customer.get("codigo_cliente") or customer.get("id") or "").strip()
+	name = str(customer.get("nombre_cliente") or "Cliente").strip()
+	return " · ".join(part for part in [code, name] if part)
+
+
+def _filter_customer_options(customers: list[dict], query: str = "") -> list[tuple[str, str]]:
+	normalized_query = (query or "").strip().lower()
+	options = []
+	for customer in customers:
+		key = str(customer.get("key") or "")
+		if not key:
+			continue
+		label = _customer_label(customer)
+		haystack = f"{key} {label} {customer.get('nombre_cliente') or ''} {customer.get('codigo_cliente') or customer.get('id') or ''}".lower()
+		if normalized_query and normalized_query not in haystack:
+			continue
+		options.append((key, label))
+	return options
+
+
+def _table_header(columns: list[tuple[str, int]], width: int) -> ft.Container:
+	return ft.Container(
+		width=width,
+		bgcolor=ft.colors.with_opacity(0.05, ft.colors.WHITE),
+		padding=ft.padding.symmetric(horizontal=14, vertical=8),
+		content=ft.Row(
+			[
+				ft.Container(
+					width=col_width,
+					content=ft.Text(label, size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY),
+				)
+				for label, col_width in columns
+			],
+			spacing=10,
+		),
+	)
 
 
 def kardex_view(page: ft.Page, navigate, **kwargs):
-    items_all = []
-    items_filtered = []
-    movements_recent = []
-    users_all = []
-    customers_all = []
-    stores_all = []
+	items_all = []
+	movements_recent = []
+	users_all = []
+	customers_all = []
+	stores_all = []
+	responsible_options = []
+	customer_options = []
+	page_state = {"page": 1, "page_size": 50, "total_pages": 1, "total": 0}
 
-    loading = ft.ProgressBar(visible=False, color=ThemeColors.ACCENT_BLUE)
+	pending_state = {
+		"missing_bodega": False,
+		"missing_responsable": False,
+		"missing_cliente": False,
+	}
 
-    stats_total = ft.Text("0", size=22, weight="bold", color=ft.colors.WHITE)
-    stats_bodega = ft.Text("0", size=22, weight="bold", color=ThemeColors.ACCENT_BLUE)
-    stats_cliente = ft.Text("0", size=22, weight="bold", color=ThemeColors.ACCENT_MAGENTA)
+	loading = ft.ProgressBar(visible=False, color=ThemeColors.ACCENT_BLUE)
+	stats_total = ft.Text("0", size=22, weight="bold", color=ft.colors.WHITE)
+	stats_bodega = ft.Text("0", size=22, weight="bold", color=ThemeColors.ACCENT_BLUE)
+	stats_cliente = ft.Text("0", size=22, weight="bold", color=ThemeColors.ACCENT_MAGENTA)
+	stats_sin_bodega = ft.Text("0", size=20, weight="bold", color=ft.colors.AMBER_300)
+	stats_sin_responsable = ft.Text("0", size=20, weight="bold", color=ft.colors.ORANGE_300)
+	stats_sin_cliente = ft.Text("0", size=20, weight="bold", color=ft.colors.RED_300)
+	pagination_txt = ft.Text("Página 1/1", size=11, color=ThemeColors.TEXT_SECONDARY)
 
-    search_tf = ft.TextField(
-        hint_text="Buscar por código, nombre o serie...",
-        prefix_icon=ft.icons.SEARCH,
-        width=360,
-        **JetBrainsTheme.input_style(),
-    )
-    where_dd = ft.Dropdown(
-        label="Ubicación actual",
-        value="TODOS",
-        width=200,
-        options=[
-            ft.dropdown.Option("TODOS"),
-            ft.dropdown.Option("BODEGA"),
-            ft.dropdown.Option("CLIENTE"),
-        ],
-        **JetBrainsTheme.input_style(),
-    )
-    responsable_dd = ft.Dropdown(
-        label="Responsable",
-        value="TODOS",
-        width=240,
-        options=[ft.dropdown.Option("TODOS")],
-        **JetBrainsTheme.input_style(),
-    )
-    cliente_dd = ft.Dropdown(
-        label="Cliente",
-        value="TODOS",
-        width=280,
-        options=[ft.dropdown.Option("TODOS")],
-        **JetBrainsTheme.input_style(),
-    )
+	rows_assets = ft.Column(spacing=0, expand=True, scroll=ft.ScrollMode.AUTO)
+	rows_kardex = ft.Column(spacing=0, expand=True, scroll=ft.ScrollMode.AUTO)
 
-    rows_assets = ft.Column(spacing=0, expand=True, scroll=ft.ScrollMode.AUTO)
-    rows_kardex = ft.Column(spacing=0, expand=True, scroll=ft.ScrollMode.AUTO)
+	search_tf = ft.TextField(
+		hint_text="Buscar por código, nombre o serie...",
+		prefix_icon=ft.icons.SEARCH,
+		width=360,
+		on_submit=lambda e: apply_filters(),
+		**JetBrainsTheme.input_style(),
+	)
+	where_dd = ft.Dropdown(
+		label="Ubicación actual",
+		value="TODOS",
+		width=200,
+		options=[
+			ft.dropdown.Option("TODOS"),
+			ft.dropdown.Option("BODEGA"),
+			ft.dropdown.Option("CLIENTE"),
+		],
+		**JetBrainsTheme.input_style(),
+	)
+	responsable_dd = ft.Dropdown(
+		label="Responsable",
+		value="TODOS",
+		width=240,
+		options=[ft.dropdown.Option("TODOS")],
+		**JetBrainsTheme.input_style(),
+	)
+	cliente_dd = ft.Dropdown(
+		label="Cliente",
+		value="TODOS",
+		width=280,
+		options=[ft.dropdown.Option("TODOS")],
+		**JetBrainsTheme.input_style(),
+	)
+	cliente_search_tf = ft.TextField(
+		hint_text="Buscar cliente por código o nombre...",
+		prefix_icon=ft.icons.SEARCH,
+		width=360,
+		on_change=lambda e: _refresh_customer_options(cliente_search_tf.value or ""),
+		**JetBrainsTheme.input_style(),
+	)
+	prioritize_pending_sw = ft.Switch(label="Priorizar pendientes", value=True)
 
-    def show_snack(msg: str, is_error: bool = False):
-        page.snack_bar = ft.SnackBar(
-            content=ft.Text(msg, color=ft.colors.WHITE, weight="bold"),
-            bgcolor=ft.colors.RED_700 if is_error else ft.colors.GREEN_700,
-            duration=3500,
-        )
-        page.snack_bar.open = True
-        page.update()
+	pending_bodega_btn = ft.TextButton("Ver pendientes")
+	pending_responsable_btn = ft.TextButton("Ver pendientes")
+	pending_cliente_btn = ft.TextButton("Ver pendientes")
+	clear_pending_btn = ft.TextButton("Limpiar filtros de pendientes", visible=False)
 
-    def _count_stats():
-        total = len(items_all)
-        en_bodega = len([x for x in items_all if _location_type(x) == "BODEGA"])
-        en_cliente = len([x for x in items_all if _location_type(x) == "CLIENTE"])
+	pending_bodega_card = ft.Container(expand=True)
+	pending_responsable_card = ft.Container(expand=True)
+	pending_cliente_card = ft.Container(expand=True)
 
-        stats_total.value = str(total)
-        stats_bodega.value = str(en_bodega)
-        stats_cliente.value = str(en_cliente)
+	page.dialog = None
 
-    def _asset_row(item: dict) -> ft.Control:
-        loc_type = _location_type(item)
-        loc_color = ThemeColors.ACCENT_BLUE if loc_type == "BODEGA" else ThemeColors.ACCENT_MAGENTA
-        responsable = item.get("responsable_nombre") or "---"
+	def _safe_page_update() -> bool:
+		try:
+			page.update()
+			return True
+		except Exception as ex:
+			if "Control must be added to the page first" in str(ex):
+				return False
+			raise
 
-        actions = ft.Row([
-            ft.IconButton(
-                icon=ft.icons.EDIT_NOTE_ROUNDED,
-                tooltip="Editar registro",
-                icon_size=18,
-                icon_color=ThemeColors.ACCENT_BLUE,
-                on_click=lambda e, it=item: _open_edit_dialog(it),
-            ),
-            ft.IconButton(
-                icon=ft.icons.TIMELINE,
-                tooltip="Ver historial del activo",
-                icon_size=18,
-                icon_color=ThemeColors.ACCENT_BLUE,
-                on_click=lambda e, it=item: navigate("item_traceability", item_id=it.get("id"), item_data=it),
-            ),
-        ], spacing=0)
+	def show_snack(msg: str, is_error: bool = False):
+		page.snack_bar = ft.SnackBar(
+			content=ft.Text(msg, color=ft.colors.WHITE, weight="bold"),
+			bgcolor=ft.colors.RED_700 if is_error else ft.colors.GREEN_700,
+			duration=3500,
+		)
+		page.snack_bar.open = True
+		_safe_page_update()
 
-        return ft.Container(
-            padding=ft.padding.symmetric(horizontal=14, vertical=8),
-            border=ft.border.only(bottom=ft.BorderSide(1, ft.colors.with_opacity(0.05, ft.colors.WHITE))),
-            content=ft.Row([
-                ft.Container(width=120, content=ft.Text(item.get("codigo", "---"), size=12, weight="bold", overflow=ft.TextOverflow.ELLIPSIS)),
-                ft.Container(width=260, content=ft.Text(item.get("nombre", "---"), size=12, overflow=ft.TextOverflow.ELLIPSIS)),
-                ft.Container(width=120, content=ft.Text(item.get("estado", "---"), size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
-                ft.Container(width=100, content=ft.Text(loc_type, size=11, weight="bold", color=loc_color)),
-                ft.Container(width=240, content=ft.Text(_read_loc_name(item), size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
-                ft.Container(width=180, content=ft.Text(responsable, size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
-                ft.Container(width=74, content=actions),
-            ], spacing=10),
-        )
+	def _schedule_load(delay: float = 0.2):
+		threading.Timer(delay, lambda: load_data(False)).start()
 
-    def _open_edit_dialog(item: dict):
-        name_tf = ft.TextField(
-            label="Nombre del activo",
-            value=item.get("nombre") or "",
-            **JetBrainsTheme.input_style(),
-        )
-        factura_tf = ft.TextField(
-            label="Numero de Factura",
-            value=item.get("numero_factura") or "",
-            **JetBrainsTheme.input_style(),
-        )
-        marca_tf = ft.TextField(
-            label="Marca",
-            value=item.get("marca") or "",
-            **JetBrainsTheme.input_style(),
-        )
-        modelo_tf = ft.TextField(
-            label="Modelo",
-            value=item.get("modelo") or "",
-            **JetBrainsTheme.input_style(),
-        )
-        serial_tf = ft.TextField(
-            label="Serie",
-            value=item.get("serial") or "",
-            **JetBrainsTheme.input_style(),
-        )
+	def _pending_card(title: str, value_ctrl: ft.Text, button: ft.TextButton, active: bool):
+		return ft.Container(
+			expand=True,
+			border_radius=12,
+			padding=ft.padding.all(14),
+			bgcolor=(
+				ft.colors.with_opacity(0.18, ThemeColors.ACCENT_BLUE)
+				if active else ft.colors.with_opacity(0.06, ft.colors.WHITE)
+			),
+			border=ft.border.all(
+				1,
+				ft.colors.with_opacity(0.32, ThemeColors.ACCENT_BLUE)
+				if active else ft.colors.with_opacity(0.12, ft.colors.WHITE),
+			),
+			content=ft.Column(
+				[
+					ft.Text(title, size=11, color=ThemeColors.TEXT_SECONDARY, weight="bold"),
+					value_ctrl,
+					button,
+				],
+				spacing=4,
+			),
+		)
 
-        responsible_edit_dd = ft.Dropdown(
-            label="Responsable",
-            options=[
-                ft.dropdown.Option(
-                    key=u.get("id"),
-                    text=f"{u.get('username', 'Usuario')} ({str(u.get('rol', '')).upper()})",
-                )
-                for u in users_all
-            ],
-            value=str(item.get("responsable_id") or "") or None,
-            **JetBrainsTheme.input_style(),
-        )
+	def _refresh_customer_options(query: str = ""):
+		customer_options.clear()
+		customer_options.extend(_filter_customer_options(customers_all, query))
+		cliente_dd.options = [ft.dropdown.Option("TODOS")] + [
+			ft.dropdown.Option(key=k, text=t)
+			for k, t in customer_options
+		]
+		if not any(opt.key == cliente_dd.value for opt in cliente_dd.options):
+			cliente_dd.value = "TODOS"
+		_safe_page_update()
 
-        customer_edit_dd = ft.Dropdown(
-            label="Cliente",
-            options=[
-                ft.dropdown.Option(
-                    key=c.get("id"),
-                    text=(c.get("nombre_cliente") or "Cliente"),
-                )
-                for c in customers_all
-            ],
-            value=str(item.get("cliente_id") or "") or None,
-            **JetBrainsTheme.input_style(),
-        )
+	def _refresh_responsible_options():
+		responsable_dd.options = [ft.dropdown.Option("TODOS")] + [
+			ft.dropdown.Option(key=k, text=t)
+			for k, t in responsible_options
+		]
+		if not any(opt.key == responsable_dd.value for opt in responsable_dd.options):
+			responsable_dd.value = "TODOS"
 
-        store_edit_dd = ft.Dropdown(
-            label="Bodega",
-            options=[
-                ft.dropdown.Option(
-                    key=s.get("id"),
-                    text=s.get("nombre_bodega") or "Bodega",
-                )
-                for s in stores_all
-            ],
-            value=str(item.get("ubicacion_actual_id") or "") or None,
-            **JetBrainsTheme.input_style(),
-        )
+	def _resolve_responsible_value(item: dict) -> str | None:
+		rid = str(item.get("responsable_id") or "").strip()
+		if rid and any(k == f"crmuser:{rid}" for k, _ in responsible_options):
+			return f"crmuser:{rid}"
+		if rid and any(k == f"user:{rid}" for k, _ in responsible_options):
+			return f"user:{rid}"
+		return None
 
-        def do_save(e):
-            payload = {
-                "nombre": (name_tf.value or "").strip(),
-                "numero_factura": (factura_tf.value or "").strip(),
-                "marca": (marca_tf.value or "").strip(),
-                "modelo": (modelo_tf.value or "").strip(),
-                "serial": (serial_tf.value or "").strip(),
-                "responsable_id": responsible_edit_dd.value,
-                "responsable_nombre": next(
-                    (u.get("username", "") for u in users_all if str(u.get("id")) == str(responsible_edit_dd.value)),
-                    "",
-                ),
-                "cliente_id": customer_edit_dd.value,
-                "cliente_nombre": next(
-                    (c.get("nombre_cliente", "") for c in customers_all if str(c.get("id")) == str(customer_edit_dd.value)),
-                    "",
-                ),
-                "ubicacion_actual_id": store_edit_dd.value,
-            }
+	def _resolve_customer_value(item: dict) -> str | None:
+		cid = str(item.get("cliente_id") or "").strip()
+		if not cid:
+			return None
+		if any(str(c.get("id")) == cid and str(c.get("key") or "").startswith("customer:") for c in customers_all):
+			return f"customer:{cid}"
+		if any(str(c.get("id")) == cid and str(c.get("key") or "").startswith("crm:") for c in customers_all):
+			return f"crm:{cid}"
+		return None
 
-            try:
-                APIClient.put(f"inventory/items/{item.get('id')}/", json=payload)
-                page.dialog.open = False
-                page.update()
-                show_snack("Registro actualizado correctamente")
-                threading.Thread(target=load_data, daemon=True).start()
-            except Exception as ex:
-                show_snack(f"No se pudo actualizar: {ex}", is_error=True)
+	def _build_edit_dialog(item: dict):
+		name_tf = ft.TextField(label="Nombre del activo", value=item.get("nombre") or "", expand=True, **JetBrainsTheme.input_style())
+		factura_tf = ft.TextField(label="Numero de Factura", value=item.get("numero_factura") or "", expand=True, **JetBrainsTheme.input_style())
+		marca_tf = ft.TextField(label="Marca", value=item.get("marca") or "", expand=True, **JetBrainsTheme.input_style())
+		modelo_tf = ft.TextField(label="Modelo", value=item.get("modelo") or "", expand=True, **JetBrainsTheme.input_style())
+		serial_tf = ft.TextField(label="Serie", value=item.get("serial") or "", expand=True, **JetBrainsTheme.input_style())
 
-        page.dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(f"Editar registro: {item.get('codigo') or 'Activo'}", weight="bold"),
-            content=ft.Container(
-                width=680,
-                content=ft.Column([
-                    name_tf,
-                    factura_tf,
-                    ft.Row([marca_tf, modelo_tf, serial_tf], spacing=10),
-                    ft.Row([responsible_edit_dd, customer_edit_dd], spacing=10),
-                    store_edit_dd,
-                ], spacing=10, scroll=ft.ScrollMode.AUTO),
-            ),
-            actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: setattr(page.dialog, "open", False) or page.update()),
-                ft.ElevatedButton("Guardar", style=JetBrainsTheme.primary_button_style(), on_click=do_save),
-            ],
-        )
-        page.dialog.open = True
-        page.update()
+		responsible_edit_dd = ft.Dropdown(
+			label="Responsable",
+			options=[ft.dropdown.Option(key=k, text=t) for k, t in responsible_options],
+			value=_resolve_responsible_value(item),
+			**JetBrainsTheme.input_style(),
+		)
 
-    def _kardex_row(mov: dict) -> ft.Control:
-        item = mov.get("item") or {}
-        tipo = mov.get("tipo_movimiento") or "---"
-        return ft.Container(
-            padding=ft.padding.symmetric(horizontal=14, vertical=8),
-            border=ft.border.only(bottom=ft.BorderSide(1, ft.colors.with_opacity(0.05, ft.colors.WHITE))),
-            content=ft.Row([
-                ft.Container(width=150, content=ft.Text(str(mov.get("fecha") or "---")[:19].replace("T", " "), size=11, color=ThemeColors.TEXT_SECONDARY)),
-                ft.Container(width=120, content=ft.Text(item.get("codigo", "---"), size=12, weight="bold", overflow=ft.TextOverflow.ELLIPSIS)),
-                ft.Container(width=230, content=ft.Text(item.get("nombre", "---"), size=11, overflow=ft.TextOverflow.ELLIPSIS)),
-                ft.Container(width=145, content=ft.Text(tipo, size=11, color=ThemeColors.ACCENT_BLUE, overflow=ft.TextOverflow.ELLIPSIS)),
-                ft.Container(width=220, content=ft.Text(_read_target_name(mov.get("origen")), size=10, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
-                ft.Container(width=220, content=ft.Text(_read_target_name(mov.get("destino")), size=10, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
-                ft.Container(width=120, content=ft.Text(mov.get("ot_id") or "---", size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
-            ], spacing=8),
-        )
+		customer_edit_search_tf = ft.TextField(
+			label="Buscar cliente",
+			value="",
+			prefix_icon=ft.icons.SEARCH,
+			expand=True,
+			**JetBrainsTheme.input_style(),
+		)
 
-    def refresh_assets_table():
-        rows_assets.controls.clear()
-        if not items_filtered:
-            rows_assets.controls.append(
-                ft.Container(
-                    padding=ft.padding.all(20),
-                    content=ft.Text("No hay activos para el filtro aplicado.", color=ThemeColors.TEXT_SECONDARY, italic=True),
-                )
-            )
-            return
+		customer_edit_dd = ft.Dropdown(
+			label="Cliente",
+			options=[ft.dropdown.Option(key=k, text=t) for k, t in customer_options],
+			value=_resolve_customer_value(item),
+			**JetBrainsTheme.input_style(),
+		)
 
-        for it in items_filtered:
-            rows_assets.controls.append(_asset_row(it))
+		store_edit_dd = ft.Dropdown(
+			label="Bodega",
+			options=[
+				ft.dropdown.Option(key=s.get("id"), text=s.get("nombre_bodega") or "Bodega")
+				for s in stores_all
+			],
+			value=str(item.get("ubicacion_actual_id") or "") or None,
+			**JetBrainsTheme.input_style(),
+		)
 
-    def refresh_kardex_table():
-        rows_kardex.controls.clear()
-        if not movements_recent:
-            rows_kardex.controls.append(
-                ft.Container(
-                    padding=ft.padding.all(20),
-                    content=ft.Text("No hay movimientos recientes.", color=ThemeColors.TEXT_SECONDARY, italic=True),
-                )
-            )
-            return
+		def _refresh_customer_edit_options(query: str = ""):
+			filtered = _filter_customer_options(customers_all, query)
+			customer_edit_dd.options = [ft.dropdown.Option(key=k, text=t) for k, t in filtered]
+			if not any(opt.key == customer_edit_dd.value for opt in customer_edit_dd.options):
+				customer_edit_dd.value = None
+			_safe_page_update()
 
-        for m in movements_recent:
-            rows_kardex.controls.append(_kardex_row(m))
+		def do_save(e):
+			selected_responsible = str(responsible_edit_dd.value or "")
+			selected_customer = str(customer_edit_dd.value or "")
 
-    def apply_filters(e=None):
-        search = (search_tf.value or "").strip().lower()
-        where = (where_dd.value or "TODOS").strip().upper()
-        responsible_id = (responsable_dd.value or "TODOS").strip()
-        customer_id = (cliente_dd.value or "TODOS").strip()
+			responsable_id = ""
+			responsable_nombre = ""
+			if selected_responsible.startswith("crmuser:") or selected_responsible.startswith("user:"):
+				responsable_id = selected_responsible.split(":", 1)[1]
+				responsible_data = next((u for u in users_all if str(u.get("id")) == responsable_id), None)
+				if not responsible_data:
+					show_snack("Responsable inválido. Selecciona un usuario activo.", is_error=True)
+					return
+				responsable_nombre = responsible_data.get("full_name") or responsible_data.get("username") or ""
+			elif selected_responsible:
+				show_snack("Responsable inválido. Selecciona un usuario activo.", is_error=True)
+				return
 
-        items_filtered.clear()
-        for it in items_all:
-            if where != "TODOS" and _location_type(it) != where:
-                continue
-            if responsible_id != "TODOS" and str(it.get("responsable_id") or "") != responsible_id:
-                continue
-            if customer_id != "TODOS" and str(it.get("cliente_id") or "") != customer_id:
-                continue
-            if search:
-                haystack = " ".join([
-                    str(it.get("codigo") or ""),
-                    str(it.get("nombre") or ""),
-                    str(it.get("serial") or ""),
-                ]).lower()
-                if search not in haystack:
-                    continue
-            items_filtered.append(it)
+			cliente_id = ""
+			cliente_nombre = ""
+			if selected_customer.startswith("customer:") or selected_customer.startswith("crm:"):
+				cliente_id = selected_customer.split(":", 1)[1]
+				customer_data = next(
+					(c for c in customers_all if str(c.get("id")) == cliente_id and str(c.get("key") or "") == selected_customer),
+					None,
+				)
+				if not customer_data:
+					customer_data = next((c for c in customers_all if str(c.get("id")) == cliente_id), None)
+				if not customer_data:
+					show_snack("Cliente inválido. Selecciona un cliente activo.", is_error=True)
+					return
+				cliente_nombre = customer_data.get("nombre_cliente") or ""
+			elif selected_customer:
+				show_snack("Cliente inválido. Selecciona un cliente activo.", is_error=True)
+				return
 
-        refresh_assets_table()
-        page.update()
+			payload = {
+				"nombre": (name_tf.value or "").strip(),
+				"numero_factura": (factura_tf.value or "").strip(),
+				"marca": (marca_tf.value or "").strip(),
+				"modelo": (modelo_tf.value or "").strip(),
+				"serial": (serial_tf.value or "").strip(),
+				"responsable_id": responsable_id,
+				"responsable_nombre": responsable_nombre,
+				"cliente_id": cliente_id,
+				"cliente_nombre": cliente_nombre,
+				"ubicacion_actual_id": store_edit_dd.value,
+			}
 
-    search_tf.on_change = apply_filters
-    where_dd.on_change = apply_filters
-    responsable_dd.on_change = apply_filters
-    cliente_dd.on_change = apply_filters
+			try:
+				APIClient.put(f"inventory/items/{item.get('id')}/", json=payload)
+				page.dialog.open = False
+				_safe_page_update()
+				show_snack("Registro actualizado correctamente")
+				_schedule_load(0.05)
+			except Exception as ex:
+				show_snack(f"No se pudo actualizar: {ex}", is_error=True)
 
-    def load_data():
-        loading.visible = True
-        page.update()
-        try:
-            items = list_items({}) or []
-            mov_payload = list_movements({"page": 1, "page_size": 50}) or {}
-            users = list_users() or []
-            customers = list_customers() or []
-            stores = list_stores() or []
-            moves = mov_payload.get("results", []) if isinstance(mov_payload, dict) else []
+		customer_edit_search_tf.on_change = lambda e: _refresh_customer_edit_options(customer_edit_search_tf.value or "")
 
-            items_all.clear()
-            items_all.extend(items)
+		page.dialog = ft.AlertDialog(
+			modal=True,
+			title=ft.Text(f"Editar registro: {item.get('codigo') or 'Activo'}", weight="bold"),
+			content=ft.Container(
+				width=760,
+				content=ft.Column(
+					[
+						name_tf,
+						factura_tf,
+						ft.Row([marca_tf, modelo_tf], spacing=10),
+						serial_tf,
+						customer_edit_search_tf,
+						ft.Row([responsible_edit_dd, customer_edit_dd], spacing=10),
+						store_edit_dd,
+					],
+					spacing=10,
+					scroll=ft.ScrollMode.AUTO,
+				),
+			),
+			actions=[
+				ft.TextButton("Cancelar", on_click=lambda e: setattr(page.dialog, "open", False) or _safe_page_update()),
+				ft.ElevatedButton("Guardar", style=JetBrainsTheme.primary_button_style(), on_click=do_save),
+			],
+		)
+		page.dialog.open = True
+		_safe_page_update()
 
-            movements_recent.clear()
-            movements_recent.extend(moves)
+	def _asset_row(item: dict) -> ft.Control:
+		loc_type = _location_type(item)
+		loc_color = ThemeColors.ACCENT_BLUE if loc_type == "BODEGA" else ThemeColors.ACCENT_MAGENTA
+		responsable = item.get("responsable_nombre") or "---"
+		priority_text, priority_color, priority_score = _priority_label(item)
 
-            users_all.clear()
-            users_all.extend(users)
-            responsable_dd.options = [ft.dropdown.Option("TODOS")] + [
-                ft.dropdown.Option(
-                    key=u.get("id"),
-                    text=f"{u.get('username', 'Usuario')} ({str(u.get('rol', '')).upper()})",
-                )
-                for u in users_all
-            ]
-            if not any(opt.key == responsable_dd.value for opt in responsable_dd.options):
-                responsable_dd.value = "TODOS"
+		row_bg = ft.colors.with_opacity(0.02, ft.colors.WHITE)
+		if priority_score >= 2:
+			row_bg = ft.colors.with_opacity(0.10, ft.colors.RED_900)
+		elif priority_score == 1:
+			row_bg = ft.colors.with_opacity(0.08, ft.colors.AMBER_900)
 
-            customers_all.clear()
-            customers_all.extend(customers)
-            cliente_dd.options = [ft.dropdown.Option("TODOS")] + [
-                ft.dropdown.Option(
-                    key=c.get("id"),
-                    text=(c.get("nombre_cliente") or "Cliente"),
-                )
-                for c in customers_all
-            ]
-            if not any(opt.key == cliente_dd.value for opt in cliente_dd.options):
-                cliente_dd.value = "TODOS"
+		actions = ft.Row(
+			[
+				ft.IconButton(
+					icon=ft.icons.EDIT_NOTE_ROUNDED,
+					tooltip="Editar registro",
+					icon_size=18,
+					icon_color=ThemeColors.ACCENT_BLUE,
+					on_click=lambda e, it=item: _build_edit_dialog(it),
+				),
+				ft.IconButton(
+					icon=ft.icons.TIMELINE,
+					tooltip="Ver historial del activo",
+					icon_size=18,
+					icon_color=ThemeColors.ACCENT_BLUE,
+					on_click=lambda e, it=item: navigate("item_traceability", item_id=it.get("id"), item_data=it),
+				),
+			],
+			spacing=0,
+		)
 
-            stores_all.clear()
-            stores_all.extend(stores)
+		return ft.Container(
+			width=ASSET_TABLE_WIDTH,
+			padding=ft.padding.symmetric(horizontal=14, vertical=8),
+			bgcolor=row_bg,
+			border=ft.border.only(bottom=ft.BorderSide(1, ft.colors.with_opacity(0.05, ft.colors.WHITE))),
+			content=ft.Row(
+				[
+					ft.Container(width=120, content=ft.Text(item.get("codigo", "---"), size=12, weight="bold", overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=260, content=ft.Text(item.get("nombre", "---"), size=12, overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=120, content=ft.Text(item.get("estado", "---"), size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=100, content=ft.Text(loc_type, size=11, weight="bold", color=loc_color)),
+					ft.Container(width=240, content=ft.Text(_read_loc_name(item), size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=180, content=ft.Text(responsable, size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=120, content=ft.Text(priority_text, size=11, weight="bold", color=priority_color, overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=74, content=actions),
+				],
+				spacing=10,
+			),
+		)
 
-            _count_stats()
-            apply_filters()
-            refresh_kardex_table()
-        except Exception as ex:
-            show_snack(f"Error cargando KARDEX: {ex}", is_error=True)
-        finally:
-            loading.visible = False
-            page.update()
+	def _movement_row(mov: dict) -> ft.Control:
+		item = mov.get("item") or {}
+		tipo = mov.get("tipo_movimiento") or mov.get("tipo") or "---"
+		fecha = str(mov.get("fecha") or "---")[:19].replace("T", " ")
+		return ft.Container(
+			width=MOV_TABLE_WIDTH,
+			padding=ft.padding.symmetric(horizontal=14, vertical=8),
+			border=ft.border.only(bottom=ft.BorderSide(1, ft.colors.with_opacity(0.05, ft.colors.WHITE))),
+			content=ft.Row(
+				[
+					ft.Container(width=150, content=ft.Text(fecha, size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=120, content=ft.Text(item.get("codigo", "---"), size=12, weight="bold", overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=230, content=ft.Text(item.get("nombre", "---"), size=11, overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=145, content=ft.Text(tipo, size=11, color=ThemeColors.ACCENT_BLUE, overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=220, content=ft.Text(_read_target_name(mov.get("origen")), size=10, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=220, content=ft.Text(_read_target_name(mov.get("destino")), size=10, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=120, content=ft.Text(mov.get("ot_id") or "---", size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
+				],
+				spacing=8,
+			),
+		)
 
-    threading.Timer(0.1, lambda: threading.Thread(target=load_data, daemon=True).start()).start()
+	def refresh_assets_table():
+		rows_assets.controls.clear()
+		if not items_all:
+			rows_assets.controls.append(
+				ft.Container(
+					padding=ft.padding.all(20),
+					content=ft.Text("No hay activos para el filtro aplicado.", color=ThemeColors.TEXT_SECONDARY, italic=True),
+				)
+			)
+			return
+		for item in items_all:
+			rows_assets.controls.append(_asset_row(item))
 
-    return ft.Column([
-        ft.Row([
-            ft.Text("KARDEX de Activos", size=22, weight="bold", color=ThemeColors.TEXT_PRIMARY),
-            ft.Row([
-                ft.ElevatedButton(
-                    "Nuevo ingreso de equipamiento",
-                    icon=ft.icons.ADD_BOX_ROUNDED,
-                    style=JetBrainsTheme.primary_button_style(),
-                    on_click=lambda e: navigate("create_item", tipo_item_default="equipo"),
-                ),
-                ft.ElevatedButton(
-                    "Actualizar",
-                    icon=ft.icons.REFRESH_ROUNDED,
-                    style=JetBrainsTheme.primary_button_style(),
-                    on_click=lambda e: threading.Thread(target=load_data, daemon=True).start(),
-                ),
-            ], spacing=10),
-        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+	def refresh_kardex_table():
+		rows_kardex.controls.clear()
+		if not movements_recent:
+			rows_kardex.controls.append(
+				ft.Container(
+					padding=ft.padding.all(20),
+					content=ft.Text("No hay movimientos recientes.", color=ThemeColors.TEXT_SECONDARY, italic=True),
+				)
+			)
+			return
+		for mov in movements_recent:
+			rows_kardex.controls.append(_movement_row(mov))
 
-        ft.Row([
-            ft.Container(
-                **JetBrainsTheme.card_style(),
-                content=ft.Column([
-                    ft.Text("ACTIVOS TOTALES", size=11, color=ThemeColors.TEXT_SECONDARY, weight="bold"),
-                    stats_total,
-                ], spacing=6),
-                expand=True,
-            ),
-            ft.Container(
-                **JetBrainsTheme.card_style(),
-                content=ft.Column([
-                    ft.Text("EN BODEGA", size=11, color=ThemeColors.TEXT_SECONDARY, weight="bold"),
-                    stats_bodega,
-                ], spacing=6),
-                expand=True,
-            ),
-            ft.Container(
-                **JetBrainsTheme.card_style(),
-                content=ft.Column([
-                    ft.Text("EN CLIENTE", size=11, color=ThemeColors.TEXT_SECONDARY, weight="bold"),
-                    stats_cliente,
-                ], spacing=6),
-                expand=True,
-            ),
-        ], spacing=12),
+	def apply_filters(e=None):
+		page_state["page"] = 1
+		_schedule_load(0.01)
 
-        ft.Container(
-            **JetBrainsTheme.card_style(),
-            content=ft.Column([
-                ft.Row([
-                    search_tf,
-                    where_dd,
-                    responsable_dd,
-                    cliente_dd,
-                ], spacing=12, wrap=True),
-                loading,
-                ft.Divider(height=1, color=ft.colors.with_opacity(0.08, ft.colors.WHITE)),
-                ft.Text("Registro de Activos por Ubicación Actual", size=13, weight="bold"),
-                ft.Container(
-                    bgcolor=ft.colors.with_opacity(0.05, ft.colors.WHITE),
-                    padding=ft.padding.symmetric(horizontal=14, vertical=8),
-                    content=ft.Row([
-                        ft.Container(width=120, content=ft.Text("CÓDIGO", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=260, content=ft.Text("ACTIVO", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=120, content=ft.Text("ESTADO", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=100, content=ft.Text("UBICACIÓN", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=240, content=ft.Text("BODEGA", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=180, content=ft.Text("RESPONSABLE", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=74, content=ft.Text("ACCIONES", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                    ], spacing=10),
-                ),
-                ft.Container(height=260, content=rows_assets),
-            ], spacing=10),
-        ),
+	def _apply_pending_filter(missing_key: str):
+		pending_state[missing_key] = not pending_state[missing_key]
+		page_state["page"] = 1
+		_schedule_load(0.01)
 
-        ft.Container(
-            **JetBrainsTheme.card_style(),
-            expand=True,
-            content=ft.Column([
-                ft.Text("Libro KARDEX - Movimientos Recientes", size=13, weight="bold"),
-                ft.Container(
-                    bgcolor=ft.colors.with_opacity(0.05, ft.colors.WHITE),
-                    padding=ft.padding.symmetric(horizontal=14, vertical=8),
-                    content=ft.Row([
-                        ft.Container(width=150, content=ft.Text("FECHA", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=120, content=ft.Text("CÓDIGO", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=230, content=ft.Text("ACTIVO", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=145, content=ft.Text("TIPO", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=220, content=ft.Text("ORIGEN", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=220, content=ft.Text("DESTINO", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                        ft.Container(width=120, content=ft.Text("OT", size=11, weight="bold", color=ThemeColors.TEXT_SECONDARY)),
-                    ], spacing=8),
-                ),
-                rows_kardex,
-            ], spacing=10, expand=True),
-        ),
-    ], expand=True, spacing=14, scroll=ft.ScrollMode.ALWAYS)
+	def _clear_pending_filters(_=None):
+		pending_state["missing_bodega"] = False
+		pending_state["missing_responsable"] = False
+		pending_state["missing_cliente"] = False
+		page_state["page"] = 1
+		_schedule_load(0.01)
+
+	pending_bodega_btn.on_click = lambda e: _apply_pending_filter("missing_bodega")
+	pending_responsable_btn.on_click = lambda e: _apply_pending_filter("missing_responsable")
+	pending_cliente_btn.on_click = lambda e: _apply_pending_filter("missing_cliente")
+	clear_pending_btn.on_click = _clear_pending_filters
+
+	where_dd.on_change = apply_filters
+	responsable_dd.on_change = apply_filters
+	cliente_dd.on_change = apply_filters
+	prioritize_pending_sw.on_change = apply_filters
+
+	def _go_prev(_):
+		if page_state["page"] > 1:
+			page_state["page"] -= 1
+			_schedule_load(0.01)
+
+	def _go_next(_):
+		if page_state["page"] < page_state["total_pages"]:
+			page_state["page"] += 1
+			_schedule_load(0.01)
+
+	prev_btn = ft.TextButton("◀ Anterior", on_click=_go_prev)
+	next_btn = ft.TextButton("Siguiente ▶", on_click=_go_next)
+
+	def load_data(refresh_catalogs: bool = True):
+		loading.visible = True
+		if not _safe_page_update():
+			_schedule_load(0.25)
+			return
+
+		try:
+			params = {
+				"page": page_state["page"],
+				"page_size": page_state["page_size"],
+				"mov_limit": 25,
+				"search": (search_tf.value or "").strip(),
+				"where": (where_dd.value or "TODOS").strip().upper(),
+				"responsable": (responsable_dd.value or "TODOS").strip(),
+				"cliente": (cliente_dd.value or "TODOS").strip(),
+				"missing_bodega": 1 if pending_state["missing_bodega"] else 0,
+				"missing_responsable": 1 if pending_state["missing_responsable"] else 0,
+				"missing_cliente": 1 if pending_state["missing_cliente"] else 0,
+			}
+
+			payload = get_kardex_dashboard(params) or {}
+
+			stats = payload.get("stats") or {}
+			pagination = payload.get("pagination") or {}
+			catalogs = payload.get("catalogs") or {}
+
+			items_all.clear()
+			items_all.extend(payload.get("items") or [])
+			movements_recent.clear()
+			movements_recent.extend(payload.get("movements") or [])
+
+			stats_total.value = str(stats.get("total_items", 0))
+			stats_bodega.value = str(stats.get("en_bodega", 0))
+			stats_cliente.value = str(stats.get("en_cliente", 0))
+			stats_sin_bodega.value = str(stats.get("sin_bodega", 0))
+			stats_sin_responsable.value = str(stats.get("sin_responsable", 0))
+			stats_sin_cliente.value = str(stats.get("sin_cliente", 0))
+
+			pending_bodega_btn.text = "Quitar filtro" if pending_state["missing_bodega"] else "Ver pendientes"
+			pending_responsable_btn.text = "Quitar filtro" if pending_state["missing_responsable"] else "Ver pendientes"
+			pending_cliente_btn.text = "Quitar filtro" if pending_state["missing_cliente"] else "Ver pendientes"
+			clear_pending_btn.visible = any(pending_state.values())
+
+			pending_bodega_card.content = _pending_card("SIN BODEGA", stats_sin_bodega, pending_bodega_btn, pending_state["missing_bodega"])
+			pending_responsable_card.content = _pending_card("SIN RESPONSABLE", stats_sin_responsable, pending_responsable_btn, pending_state["missing_responsable"])
+			pending_cliente_card.content = _pending_card("SIN CLIENTE", stats_sin_cliente, pending_cliente_btn, pending_state["missing_cliente"])
+
+			page_state["total"] = int(pagination.get("total", len(items_all)))
+			page_state["total_pages"] = max(1, int(pagination.get("total_pages", 1)))
+			page_state["page"] = max(1, int(pagination.get("page", page_state["page"])))
+
+			pagination_txt.value = f"Página {page_state['page']}/{page_state['total_pages']} · {page_state['total']} registros"
+			prev_btn.disabled = page_state["page"] <= 1
+			next_btn.disabled = page_state["page"] >= page_state["total_pages"]
+
+			if refresh_catalogs:
+				users_all.clear()
+				users_all.extend(catalogs.get("responsables") or [])
+				responsible_options.clear()
+				responsible_options.extend(
+					[
+						(
+							str(u.get("key") or ""),
+							u.get("full_name") or u.get("username") or "Usuario",
+						)
+						for u in users_all
+						if str(u.get("key") or "")
+					]
+				)
+
+				customers_all.clear()
+				customers_all.extend(catalogs.get("clientes") or [])
+				stores_all.clear()
+				stores_all.extend(catalogs.get("bodegas") or [])
+
+				_refresh_responsible_options()
+				_refresh_customer_options(cliente_search_tf.value or "")
+
+			if prioritize_pending_sw.value:
+				items_all.sort(key=lambda it: (-_priority_label(it)[2], str(it.get("codigo") or "")))
+
+			refresh_assets_table()
+			refresh_kardex_table()
+		except Exception as ex:
+			show_snack(f"Error cargando KARDEX: {ex}", is_error=True)
+		finally:
+			loading.visible = False
+			_safe_page_update()
+
+	_schedule_load(0.2)
+
+	return ft.Column(
+		[
+			ft.Row(
+				[
+					ft.Text("KARDEX de Activos", size=22, weight="bold", color=ThemeColors.TEXT_PRIMARY),
+					ft.Row(
+						[
+							ft.ElevatedButton(
+								"Nuevo ingreso de equipamiento",
+								icon=ft.icons.ADD_BOX_ROUNDED,
+								style=JetBrainsTheme.primary_button_style(),
+								on_click=lambda e: navigate("create_item", tipo_item_default="equipo"),
+							),
+							ft.ElevatedButton(
+								"Buscar",
+								icon=ft.icons.SEARCH,
+								style=JetBrainsTheme.primary_button_style(),
+								on_click=lambda e: apply_filters(),
+							),
+							ft.ElevatedButton(
+								"Actualizar",
+								icon=ft.icons.REFRESH_ROUNDED,
+								style=JetBrainsTheme.primary_button_style(),
+								on_click=lambda e: load_data(True),
+							),
+						],
+						spacing=10,
+					),
+				],
+				alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+			),
+			ft.Row(
+				[
+					ft.Container(
+						**JetBrainsTheme.card_style(),
+						content=ft.Column(
+							[
+								ft.Text("ACTIVOS TOTALES", size=11, color=ThemeColors.TEXT_SECONDARY, weight="bold"),
+								stats_total,
+							],
+							spacing=6,
+						),
+						expand=True,
+					),
+					ft.Container(
+						**JetBrainsTheme.card_style(),
+						content=ft.Column(
+							[
+								ft.Text("EN BODEGA", size=11, color=ThemeColors.TEXT_SECONDARY, weight="bold"),
+								stats_bodega,
+							],
+							spacing=6,
+						),
+						expand=True,
+					),
+					ft.Container(
+						**JetBrainsTheme.card_style(),
+						content=ft.Column(
+							[
+								ft.Text("EN CLIENTE", size=11, color=ThemeColors.TEXT_SECONDARY, weight="bold"),
+								stats_cliente,
+							],
+							spacing=6,
+						),
+						expand=True,
+					),
+				],
+				spacing=12,
+			),
+			ft.Row(
+				[pending_bodega_card, pending_responsable_card, pending_cliente_card],
+				spacing=12,
+			),
+			ft.Container(
+				**JetBrainsTheme.card_style(),
+				content=ft.Column(
+					[
+						ft.Row(
+							[
+								search_tf,
+								where_dd,
+								responsable_dd,
+								cliente_search_tf,
+								cliente_dd,
+								prioritize_pending_sw,
+								clear_pending_btn,
+							],
+							spacing=12,
+							wrap=True,
+						),
+						loading,
+						ft.Divider(height=1, color=ft.colors.with_opacity(0.08, ft.colors.WHITE)),
+						ft.Text("Registro de Activos por Ubicación Actual", size=13, weight="bold"),
+						ft.Row(
+							[
+								ft.Container(
+									width=ASSET_TABLE_WIDTH,
+									content=ft.Column(
+										[
+											_table_header(ASSET_TABLE_COLUMNS, ASSET_TABLE_WIDTH),
+											ft.Container(height=300, content=rows_assets),
+										],
+										spacing=0,
+									),
+								)
+							],
+							scroll=ft.ScrollMode.ALWAYS,
+						),
+						ft.Row(
+							[prev_btn, pagination_txt, next_btn],
+							alignment=ft.MainAxisAlignment.END,
+						),
+					],
+					spacing=10,
+				),
+			),
+			ft.Container(
+				**JetBrainsTheme.card_style(),
+				expand=True,
+				content=ft.Column(
+					[
+						ft.Text("Libro KARDEX - Movimientos Recientes", size=13, weight="bold"),
+						ft.Row(
+							[
+								ft.Container(
+									width=MOV_TABLE_WIDTH,
+									content=ft.Column(
+										[
+											_table_header(MOV_TABLE_COLUMNS, MOV_TABLE_WIDTH),
+											ft.Container(height=260, content=rows_kardex),
+										],
+										spacing=0,
+									),
+								)
+							],
+							scroll=ft.ScrollMode.ALWAYS,
+						),
+					],
+					spacing=10,
+				),
+			),
+		],
+		spacing=12,
+		expand=True,
+		scroll=ft.ScrollMode.AUTO,
+	)

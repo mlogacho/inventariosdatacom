@@ -8,6 +8,45 @@ Estado actual del alcance funcional:
 - Gestion de bodegas restringida al flujo operativo actual
 - Dashboard y vistas operativas de inventario
 
+## Actualizacion funcional KARDEX (2026-07-01)
+
+Se documenta el flujo consolidado de KARDEX con soporte operativo para activos, responsables y clientes CRM.
+
+### Alcance funcional incorporado
+- Alta de articulos con el campo `Numero de Factura`.
+- KARDEX operativo para registrar y editar activos desde una sola vista.
+- Columna `OT` removida del listado principal y reemplazo por `Responsable`.
+- Edicion por registro en el modal del KARDEX.
+- Campo `Serie` editable en el flujo de edicion.
+- Bodegas y ubicacion actual visibles con filtros de pendientes.
+
+### Integraciones activas
+- Responsables consumidos desde usuarios activos de CRM.
+- Clientes consumidos desde CRM y desde clientes locales del sistema.
+- Normalizacion de nombres completos de usuarios CRM usando nombre + apellido.
+- Busqueda segura de clientes por codigo o nombre sin deshabilitar el dropdown.
+
+### KARDEX consolidado
+- Endpoint unificado `GET /api/inventory/kardex/` para cargar en una sola llamada:
+	- estadisticas,
+	- catalogos,
+	- activos,
+	- movimientos,
+	- paginacion.
+- Filtros por:
+	- busqueda global,
+	- ubicacion actual,
+	- responsable,
+	- cliente,
+	- faltantes de bodega/responsable/cliente.
+- Ordenamiento de prioridad para registros pendientes.
+
+### Interfaz del frontend
+- Se mantuvo el dropdown de cliente en modo normal.
+- La busqueda de cliente se resolvio con un campo auxiliar independiente para evitar el problema visual de controles desactivados.
+- Las cabeceras de tablas se alinearon con las filas usando anchos compartidos.
+- Se habilito el acceso a trazabilidad del activo desde cada fila.
+
 ## Reglas de negocio activas
 
 1. Origen de ingreso obligatorio:
@@ -109,6 +148,7 @@ Modulos activos en navegacion principal:
 - Activos
 - Movimientos
 - Bodegas
+- KARDEX de Activos
 
 ## Seguridad y acceso
 
