@@ -2,6 +2,30 @@
 
 Todas las modificaciones relevantes del proyecto se registran en este archivo.
 
+## [2026-07-01] - Auto-heal de red Docker post-deploy + robustez de dropdowns CRM en KARDEX
+
+### Corregido
+- Se estabiliza la conectividad interna entre servicios para evitar ruptura de acceso ERP por resolucion DNS entre contenedores (`backend`, `frontend`, `mongo`).
+- Se evita el error intermitente `mongo:27017 No address associated with hostname` tras despliegues parciales.
+- El modal de edicion en KARDEX fuerza recarga de catalogos si detecta listas vacias antes de abrir, garantizando opciones en `Ubicacion`, `Responsable` y `Cliente`.
+
+### Cambiado
+- **Punto 2 aplicado**: se agrega rutina de auto-heal post-deploy en scripts de despliegue:
+  - `deploy_inventarios_v2.sh`
+  - `deploy_inventarios.sh`
+- La rutina conecta automaticamente `inv_dc_backend`, `inv_dc_frontend` e `inv_dc_mongo` a la red esperada `inventarios_datacom_net` con aliases de servicio.
+- Se valida en caliente:
+  - DNS `backend -> mongo`
+  - health HTTP `frontend -> backend` (`/api/health/`)
+
+### Operacion
+- Commit aplicado con estos cambios: `129061f` (base) + hardening de deploy/documentacion en esta entrega.
+- Verificacion en servidor luego del fix:
+  - `http://127.0.0.1:8060/api/health/` -> 200
+  - `http://127.0.0.1:8070/` -> 200
+  - `http://127.0.0.1:8070/api/health/` -> 200
+  - `POST /api/users/sso-login/` -> success
+
 ## [2026-07-01] - KARDEX consolidado, CRM activo y edicion segura
 
 ### Agregado

@@ -13,6 +13,52 @@ log()  { echo -e "${GREEN}[+]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
+container_exists() {
+    docker inspect "$1" >/dev/null 2>&1
+}
+
+connect_container_network() {
+    local network_name="$1"
+    local container_name="$2"
+    local alias_name="$3"
+
+    container_exists "$container_name" || return 0
+
+    if docker inspect -f '{{json .NetworkSettings.Networks}}' "$container_name" | grep -q "\"$network_name\""; then
+        return 0
+    fi
+
+    warn "Conectando $container_name a red $network_name (alias: $alias_name)"
+    docker network connect --alias "$alias_name" "$network_name" "$container_name"
+}
+
+post_deploy_autoheal() {
+    local network_name="inventarios_datacom_net"
+    log "Auto-heal post-deploy: validando red Docker interna"
+
+    if ! docker network inspect "$network_name" >/dev/null 2>&1; then
+        err "Red esperada '$network_name' no existe. Revisa docker-compose.yml"
+    fi
+
+    connect_container_network "$network_name" "inv_dc_backend" "backend"
+    connect_container_network "$network_name" "inv_dc_frontend" "frontend"
+    connect_container_network "$network_name" "inv_dc_mongo" "mongo"
+
+    docker exec inv_dc_backend python - <<'PY'
+import socket
+socket.gethostbyname("mongo")
+print("backend->mongo DNS OK")
+PY
+
+    docker exec inv_dc_frontend python - <<'PY'
+import requests
+r = requests.get("http://backend:8000/api/health/", timeout=8)
+print(f"frontend->backend health={r.status_code}")
+if r.status_code != 200:
+    raise SystemExit(1)
+PY
+}
+
 # ─── Configuración ─────────────────────────────────────────
 APP_DIR="/opt/inventarios_datacom"
 REPO_URL="https://github.com/mlogacho/inventariosdatacom.git"
@@ -177,7 +223,7 @@ print("    mongodb  -> solo red interna Docker")
 PYEOF
 
 # ─── 4. Construir y levantar contenedores ───────────────────
-log "Paso 4/5 — Construyendo e iniciando servicios Docker..."
+log "Paso 4/6 — Construyendo e iniciando servicios Docker..."
 warn "Esto puede tardar varios minutos (LibreOffice es grande)..."
 
 $DC -p "$COMPOSE_PROJECT" up -d --build
@@ -185,12 +231,16 @@ $DC -p "$COMPOSE_PROJECT" up -d --build
 log "Esperando que los servicios estén listos..."
 sleep 20
 
+log "Paso 5/6 — Auto-heal de conectividad interna"
+post_deploy_autoheal
+
 # Verificar estado
 echo ""
 log "Estado de los contenedores:"
 $DC -p "$COMPOSE_PROJECT" ps
 echo ""
 
+# Paso 6/6 - Health checks de servicios
 # Health check del backend
 BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8060/api/health/ 2>/dev/null || echo "000")
 if [ "$BACKEND_STATUS" = "200" ]; then
