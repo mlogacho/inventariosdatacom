@@ -13,8 +13,7 @@ ASSET_TABLE_COLUMNS = [
 	("CÓDIGO", 120),
 	("ACTIVO", 260),
 	("ESTADO", 120),
-	("UBICACIÓN", 100),
-	("BODEGA", 240),
+	("UBICACIÓN", 340),
 	("RESPONSABLE", 180),
 	("CALIDAD", 120),
 	("ACCIONES", 74),
@@ -83,6 +82,10 @@ def _customer_label(customer: dict) -> str:
 	return " · ".join(part for part in [code, name] if part)
 
 
+def _store_label(store: dict) -> str:
+	return str(store.get("nombre_bodega") or "Bodega").strip() or "Bodega"
+
+
 def _filter_customer_options(customers: list[dict], query: str = "") -> list[tuple[str, str]]:
 	normalized_query = (query or "").strip().lower()
 	options = []
@@ -95,6 +98,21 @@ def _filter_customer_options(customers: list[dict], query: str = "") -> list[tup
 		if normalized_query and normalized_query not in haystack:
 			continue
 		options.append((key, label))
+	return options
+
+
+def _location_options(stores: list[dict], customers: list[dict]) -> list[tuple[str, str]]:
+	options = []
+	for store in stores:
+		store_id = str(store.get("id") or "").strip()
+		if not store_id:
+			continue
+		options.append((f"store:{store_id}", _store_label(store)))
+	for customer in customers:
+		key = str(customer.get("key") or "").strip()
+		if not key:
+			continue
+		options.append((key, _customer_label(customer)))
 	return options
 
 
@@ -114,6 +132,12 @@ def _table_header(columns: list[tuple[str, int]], width: int) -> ft.Container:
 			spacing=10,
 		),
 	)
+
+
+def _location_label(item: dict) -> str:
+	if _location_type(item) == "CLIENTE":
+		return str(item.get("cliente_nombre") or "Cliente sin registrar").strip() or "Cliente sin registrar"
+	return str(item.get("ubicacion_nombre") or "Sin bodega registrada").strip() or "Sin bodega registrada"
 
 
 def kardex_view(page: ft.Page, navigate, **kwargs):
@@ -278,6 +302,15 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			return f"crm:{cid}"
 		return None
 
+	def _resolve_location_value(item: dict) -> str | None:
+		store_id = str(item.get("ubicacion_actual_id") or "").strip()
+		if store_id and any(str(s.get("id") or "") == store_id for s in stores_all):
+			return f"store:{store_id}"
+		customer_key = _resolve_customer_value(item)
+		if customer_key:
+			return customer_key
+		return None
+
 	def _build_edit_dialog(item: dict):
 		name_tf = ft.TextField(label="Nombre del activo", value=item.get("nombre") or "", expand=True, **JetBrainsTheme.input_style())
 		factura_tf = ft.TextField(label="Numero de Factura", value=item.get("numero_factura") or "", expand=True, **JetBrainsTheme.input_style())
@@ -307,13 +340,11 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			**JetBrainsTheme.input_style(),
 		)
 
-		store_edit_dd = ft.Dropdown(
-			label="Bodega",
-			options=[
-				ft.dropdown.Option(key=s.get("id"), text=s.get("nombre_bodega") or "Bodega")
-				for s in stores_all
-			],
-			value=str(item.get("ubicacion_actual_id") or "") or None,
+		location_options = _location_options(stores_all, customers_all)
+		location_dd = ft.Dropdown(
+			label="Ubicación",
+			options=[ft.dropdown.Option(key=k, text=t) for k, t in location_options],
+			value=_resolve_location_value(item),
 			**JetBrainsTheme.input_style(),
 		)
 
@@ -322,11 +353,16 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			customer_edit_dd.options = [ft.dropdown.Option(key=k, text=t) for k, t in filtered]
 			if not any(opt.key == customer_edit_dd.value for opt in customer_edit_dd.options):
 				customer_edit_dd.value = None
+			location_options = _location_options(stores_all, customers_all)
+			location_dd.options = [ft.dropdown.Option(key=k, text=t) for k, t in location_options]
+			if not any(opt.key == location_dd.value for opt in location_dd.options):
+				location_dd.value = None
 			_safe_page_update()
 
 		def do_save(e):
 			selected_responsible = str(responsible_edit_dd.value or "")
 			selected_customer = str(customer_edit_dd.value or "")
+			selected_location = str(location_dd.value or "")
 
 			responsable_id = ""
 			responsable_nombre = ""
@@ -359,6 +395,20 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 				show_snack("Cliente inválido. Selecciona un cliente activo.", is_error=True)
 				return
 
+			ubicacion_actual_id = None
+			if selected_location.startswith("store:"):
+				ubicacion_actual_id = selected_location.split(":", 1)[1]
+			elif selected_location.startswith("customer:") or selected_location.startswith("crm:"):
+				cliente_id = selected_location.split(":", 1)[1]
+				customer_data = next((c for c in customers_all if str(c.get("id")) == cliente_id), None)
+				if not customer_data:
+					show_snack("Ubicación inválida. Selecciona una bodega o un cliente activo.", is_error=True)
+					return
+				cliente_nombre = customer_data.get("nombre_cliente") or cliente_nombre
+			elif selected_location:
+				show_snack("Ubicación inválida. Selecciona una bodega o un cliente activo.", is_error=True)
+				return
+
 			payload = {
 				"nombre": (name_tf.value or "").strip(),
 				"numero_factura": (factura_tf.value or "").strip(),
@@ -369,7 +419,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 				"responsable_nombre": responsable_nombre,
 				"cliente_id": cliente_id,
 				"cliente_nombre": cliente_nombre,
-				"ubicacion_actual_id": store_edit_dd.value,
+				"ubicacion_actual_id": ubicacion_actual_id,
 			}
 
 			try:
@@ -394,9 +444,9 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 						factura_tf,
 						ft.Row([marca_tf, modelo_tf], spacing=10),
 						serial_tf,
+						location_dd,
 						customer_edit_search_tf,
 						ft.Row([responsible_edit_dd, customer_edit_dd], spacing=10),
-						store_edit_dd,
 					],
 					spacing=10,
 					scroll=ft.ScrollMode.AUTO,
@@ -452,8 +502,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 					ft.Container(width=120, content=ft.Text(item.get("codigo", "---"), size=12, weight="bold", overflow=ft.TextOverflow.ELLIPSIS)),
 					ft.Container(width=260, content=ft.Text(item.get("nombre", "---"), size=12, overflow=ft.TextOverflow.ELLIPSIS)),
 					ft.Container(width=120, content=ft.Text(item.get("estado", "---"), size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
-					ft.Container(width=100, content=ft.Text(loc_type, size=11, weight="bold", color=loc_color)),
-					ft.Container(width=240, content=ft.Text(_read_loc_name(item), size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(width=340, content=ft.Text(_location_label(item), size=11, weight="bold", color=loc_color, overflow=ft.TextOverflow.ELLIPSIS)),
 					ft.Container(width=180, content=ft.Text(responsable, size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
 					ft.Container(width=120, content=ft.Text(priority_text, size=11, weight="bold", color=priority_color, overflow=ft.TextOverflow.ELLIPSIS)),
 					ft.Container(width=74, content=actions),
