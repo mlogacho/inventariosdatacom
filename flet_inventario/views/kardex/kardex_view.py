@@ -312,16 +312,17 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 		return None
 
 	def _build_edit_dialog(item: dict):
-		name_tf = ft.TextField(label="Nombre del activo", value=item.get("nombre") or "", expand=True, **JetBrainsTheme.input_style())
-		factura_tf = ft.TextField(label="Numero de Factura", value=item.get("numero_factura") or "", expand=True, **JetBrainsTheme.input_style())
-		marca_tf = ft.TextField(label="Marca", value=item.get("marca") or "", expand=True, **JetBrainsTheme.input_style())
-		modelo_tf = ft.TextField(label="Modelo", value=item.get("modelo") or "", expand=True, **JetBrainsTheme.input_style())
-		serial_tf = ft.TextField(label="Serie", value=item.get("serial") or "", expand=True, **JetBrainsTheme.input_style())
+		name_tf = ft.TextField(label="Nombre del activo", value=item.get("nombre") or "", width=740, **JetBrainsTheme.input_style())
+		factura_tf = ft.TextField(label="Numero de Factura", value=item.get("numero_factura") or "", width=740, **JetBrainsTheme.input_style())
+		marca_tf = ft.TextField(label="Marca", value=item.get("marca") or "", width=365, **JetBrainsTheme.input_style())
+		modelo_tf = ft.TextField(label="Modelo", value=item.get("modelo") or "", width=365, **JetBrainsTheme.input_style())
+		serial_tf = ft.TextField(label="Serie", value=item.get("serial") or "", width=740, **JetBrainsTheme.input_style())
 
 		responsible_edit_dd = ft.Dropdown(
 			label="Responsable",
 			options=[ft.dropdown.Option(key=k, text=t) for k, t in responsible_options],
 			value=_resolve_responsible_value(item),
+			width=365,
 			**JetBrainsTheme.input_style(),
 		)
 
@@ -329,7 +330,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			label="Buscar cliente",
 			value="",
 			prefix_icon=ft.icons.SEARCH,
-			expand=True,
+			width=365,
 			**JetBrainsTheme.input_style(),
 		)
 
@@ -337,6 +338,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			label="Cliente",
 			options=[ft.dropdown.Option(key=k, text=t) for k, t in customer_options],
 			value=_resolve_customer_value(item),
+			width=365,
 			**JetBrainsTheme.input_style(),
 		)
 
@@ -345,6 +347,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			label="Ubicación",
 			options=[ft.dropdown.Option(key=k, text=t) for k, t in location_options],
 			value=_resolve_location_value(item),
+			width=365,
 			**JetBrainsTheme.input_style(),
 		)
 
@@ -435,21 +438,35 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 
 		page.dialog = ft.AlertDialog(
 			modal=True,
-			title=ft.Text(f"Editar registro: {item.get('codigo') or 'Activo'}", weight="bold"),
+			title=ft.Row(
+				[
+					ft.Icon(ft.icons.EDIT_ROUNDED, color=ThemeColors.ACCENT_BLUE, size=24),
+					ft.Text(f"Editar registro: {item.get('codigo') or 'Activo'}", weight="bold"),
+				],
+				spacing=10,
+			),
 			content=ft.Container(
 				width=760,
+				padding=20,
+				border_radius=18,
+				bgcolor=ft.colors.with_opacity(0.03, ft.colors.WHITE),
 				content=ft.Column(
 					[
-						name_tf,
-						factura_tf,
-						ft.Row([marca_tf, modelo_tf], spacing=10),
+						ft.Text("Identificación del activo", size=12, weight="bold", color=ThemeColors.TEXT_SECONDARY),
+						ft.Row([name_tf, factura_tf], spacing=10, wrap=True),
+						ft.Divider(height=1, color=ft.colors.with_opacity(0.10, ft.colors.WHITE)),
+						ft.Text("Características", size=12, weight="bold", color=ThemeColors.TEXT_SECONDARY),
+						ft.Row([marca_tf, modelo_tf], spacing=10, wrap=True),
 						serial_tf,
-						location_dd,
-						customer_edit_search_tf,
-						ft.Row([responsible_edit_dd, customer_edit_dd], spacing=10),
+						ft.Divider(height=1, color=ft.colors.with_opacity(0.10, ft.colors.WHITE)),
+						ft.Text("Asignación y ubicación", size=12, weight="bold", color=ThemeColors.TEXT_SECONDARY),
+						ft.Row([location_dd, responsible_edit_dd], spacing=10, wrap=True),
+						ft.Divider(height=1, color=ft.colors.with_opacity(0.10, ft.colors.WHITE)),
+						ft.Text("Cliente relacionado", size=12, weight="bold", color=ThemeColors.TEXT_SECONDARY),
+						ft.Row([customer_edit_search_tf, customer_edit_dd], spacing=10, wrap=True),
 					],
 					spacing=10,
-					scroll=ft.ScrollMode.AUTO,
+					tight=True,
 				),
 			),
 			actions=[
