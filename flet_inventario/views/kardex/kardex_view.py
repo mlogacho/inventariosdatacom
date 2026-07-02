@@ -284,6 +284,41 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 		if not any(opt.key == responsable_dd.value for opt in responsable_dd.options):
 			responsable_dd.value = "TODOS"
 
+	def _apply_catalogs(catalogs: dict):
+		users_all.clear()
+		users_all.extend(catalogs.get("responsables") or [])
+		responsible_options.clear()
+		responsible_options.extend(
+			[
+				(
+					str(u.get("key") or ""),
+					u.get("full_name") or u.get("username") or "Usuario",
+				)
+				for u in users_all
+				if str(u.get("key") or "")
+			]
+		)
+
+		customers_all.clear()
+		customers_all.extend(catalogs.get("clientes") or [])
+		stores_all.clear()
+		stores_all.extend(catalogs.get("bodegas") or [])
+
+		_refresh_responsible_options()
+		_refresh_customer_options(cliente_search_tf.value or "")
+
+	def _ensure_catalogs_for_edit() -> bool:
+		if responsible_options and customers_all and stores_all:
+			return True
+		try:
+			payload = get_kardex_dashboard({"page": 1, "page_size": 1, "mov_limit": 1}) or {}
+			catalogs = payload.get("catalogs") or {}
+			_apply_catalogs(catalogs)
+			return True
+		except Exception as ex:
+			show_snack(f"No se pudieron cargar catálogos CRM: {ex}", is_error=True)
+			return False
+
 	def _resolve_responsible_value(item: dict) -> str | None:
 		rid = str(item.get("responsable_id") or "").strip()
 		if rid and any(k == f"crmuser:{rid}" for k, _ in responsible_options):
@@ -312,6 +347,9 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 		return None
 
 	def _build_edit_dialog(item: dict):
+		if not _ensure_catalogs_for_edit():
+			return
+
 		name_tf = ft.TextField(label="Nombre del activo", value=item.get("nombre") or "", width=740, **JetBrainsTheme.input_style())
 		factura_tf = ft.TextField(label="Numero de Factura", value=item.get("numero_factura") or "", width=740, **JetBrainsTheme.input_style())
 		marca_tf = ft.TextField(label="Marca", value=item.get("marca") or "", width=365, **JetBrainsTheme.input_style())
@@ -672,27 +710,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			next_btn.disabled = page_state["page"] >= page_state["total_pages"]
 
 			if refresh_catalogs:
-				users_all.clear()
-				users_all.extend(catalogs.get("responsables") or [])
-				responsible_options.clear()
-				responsible_options.extend(
-					[
-						(
-							str(u.get("key") or ""),
-							u.get("full_name") or u.get("username") or "Usuario",
-						)
-						for u in users_all
-						if str(u.get("key") or "")
-					]
-				)
-
-				customers_all.clear()
-				customers_all.extend(catalogs.get("clientes") or [])
-				stores_all.clear()
-				stores_all.extend(catalogs.get("bodegas") or [])
-
-				_refresh_responsible_options()
-				_refresh_customer_options(cliente_search_tf.value or "")
+				_apply_catalogs(catalogs)
 
 			if prioritize_pending_sw.value:
 				items_all.sort(key=lambda it: (-_priority_label(it)[2], str(it.get("codigo") or "")))

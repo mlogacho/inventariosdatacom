@@ -4,17 +4,21 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: django_backend
+    container_name: inv_dc_backend
     volumes:
       - ./backend:/app
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8060:8000"
     env_file:
       - ./backend/.env.dev
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.base
       PYTHONPATH: /app
     command: python manage.py runserver 0.0.0.0:8000
+    networks:
+      app_net:
+        aliases:
+          - backend
     depends_on:
       mongo:
         condition: service_healthy
@@ -22,27 +26,35 @@ services:
   frontend:
     build:
       context: ../flet_inventario
-    container_name: flet_frontend
+    container_name: inv_dc_frontend
     volumes:
       - ../flet_inventario:/app
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8061:8080"
     env_file:
       - ../flet_inventario/.env
     environment:
       API_BASE_URL: http://backend:8000/api
+    networks:
+      app_net:
+        aliases:
+          - frontend
     depends_on:
       - backend
 
   mongo:
     image: mongo:7
-    container_name: mongo_db
+    container_name: inv_dc_mongo
     restart: always
     command: [ "--replSet", "rs0", "--bind_ip_all" ]
     ports:
-      - "27017:27017"
+      - "27017"
     volumes:
       - mongo_data:/data/db
+    networks:
+      app_net:
+        aliases:
+          - mongo
     healthcheck:
       test: echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}) }" | mongosh --quiet
       interval: 5s
@@ -51,3 +63,7 @@ services:
 
 volumes:
   mongo_data:
+
+networks:
+  app_net:
+    name: inventarios_datacom_net
