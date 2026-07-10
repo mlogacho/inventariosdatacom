@@ -1,13 +1,16 @@
 import threading
+import webbrowser
 
 import flet as ft
 
 from core.api_client import APIClient
+from core.session import Session
 from core.theme import ThemeColors, JetBrainsTheme
 from services.kardex_service import get_kardex_dashboard
+from services.movement_service import download_acta_entrega_recepcion
 
 ASSET_TABLE_WIDTH = 1370
-MOV_TABLE_WIDTH = 1260
+MOV_TABLE_WIDTH = 1315
 
 ASSET_TABLE_COLUMNS = [
 	("CÓDIGO", 120),
@@ -27,6 +30,7 @@ MOV_TABLE_COLUMNS = [
 	("ORIGEN", 220),
 	("DESTINO", 220),
 	("OT", 120),
+	("ACTA", 48),
 ]
 
 
@@ -355,6 +359,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 		marca_tf = ft.TextField(label="Marca", value=item.get("marca") or "", width=365, **JetBrainsTheme.input_style())
 		modelo_tf = ft.TextField(label="Modelo", value=item.get("modelo") or "", width=365, **JetBrainsTheme.input_style())
 		serial_tf = ft.TextField(label="Serie", value=item.get("serial") or "", width=740, **JetBrainsTheme.input_style())
+		mac_tf = ft.TextField(label="MAC", value=item.get("mac") or "", width=740, **JetBrainsTheme.input_style())
 
 		responsible_edit_dd = ft.Dropdown(
 			label="Responsable",
@@ -456,6 +461,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 				"marca": (marca_tf.value or "").strip(),
 				"modelo": (modelo_tf.value or "").strip(),
 				"serial": (serial_tf.value or "").strip(),
+				"mac": (mac_tf.value or "").strip(),
 				"responsable_id": responsable_id,
 				"responsable_nombre": responsable_nombre,
 				"cliente_id": cliente_id,
@@ -497,6 +503,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 						ft.Text("Características", size=12, weight="bold", color=ThemeColors.TEXT_SECONDARY),
 						ft.Row([marca_tf, modelo_tf], spacing=10, wrap=True),
 						serial_tf,
+						mac_tf,
 						ft.Divider(height=1, color=ft.colors.with_opacity(0.10, ft.colors.WHITE)),
 						ft.Text("Asignación y ubicación", size=12, weight="bold", color=ThemeColors.TEXT_SECONDARY),
 						ft.Row([location_dd, responsible_edit_dd], spacing=10, wrap=True),
@@ -511,6 +518,95 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			actions=[
 				ft.TextButton("Cancelar", on_click=lambda e: setattr(page.dialog, "open", False) or _safe_page_update()),
 				ft.ElevatedButton("Guardar", style=JetBrainsTheme.primary_button_style(), on_click=do_save),
+			],
+		)
+		page.dialog.open = True
+		_safe_page_update()
+
+	def _open_acta_dialog(item_id: str | None = None):
+		if not _ensure_catalogs_for_edit():
+			return
+
+		current_username = ""
+		if Session.user and isinstance(Session.user, dict):
+			current_username = str(Session.user.get("username") or "").strip()
+
+		recibe_candidates = [
+			u for u in users_all
+			if str(u.get("id") or "").strip() and str(u.get("username") or "").strip() != current_username
+		]
+
+		if not recibe_candidates:
+			show_snack("No hay usuarios CRM disponibles para seleccionar 'Recibe'.", is_error=True)
+			return
+
+		recibe_dd = ft.Dropdown(
+			label="Recibe (CRM)",
+			width=500,
+			options=[
+				ft.dropdown.Option(
+					key=str(u.get("id")),
+					text=f"{u.get('full_name') or u.get('username') or 'Usuario'} | {u.get('rol') or 'Cargo no registrado'}",
+				)
+				for u in recibe_candidates
+			],
+			value=str(recibe_candidates[0].get("id")),
+			**JetBrainsTheme.input_style(),
+		)
+
+		obs_tf = ft.TextField(
+			label="Observacion",
+			hint_text="Detalle adicional de entrega/recepcion",
+			multiline=True,
+			min_lines=3,
+			max_lines=5,
+			width=500,
+			**JetBrainsTheme.input_style(),
+		)
+
+		def _generate(_):
+			recibe_id = str(recibe_dd.value or "").strip()
+			if not recibe_id:
+				show_snack("Debes seleccionar el usuario que recibe.", is_error=True)
+				return
+
+			payload = {
+				"recibe_user_id": recibe_id,
+				"observacion": (obs_tf.value or "").strip(),
+			}
+			if item_id:
+				payload["item_id"] = item_id
+
+			def _download_worker():
+				try:
+					show_snack("Generando ACTA DE ENTREGA - RECEPCION...")
+					pdf_path = download_acta_entrega_recepcion(payload)
+					webbrowser.open(f"file://{pdf_path}")
+					show_snack("ACTA generada correctamente")
+				except Exception as ex:
+					show_snack(f"Error al generar acta: {ex}", is_error=True)
+
+			page.dialog.open = False
+			_safe_page_update()
+			threading.Thread(target=_download_worker, daemon=True).start()
+
+		page.dialog = ft.AlertDialog(
+			modal=True,
+			title=ft.Text("Generar ACTA DE ENTREGA - RECEPCION", weight="bold"),
+			content=ft.Container(
+				width=540,
+				content=ft.Column(
+					[
+						ft.Text("Entrega: usuario logueado (CRM)", color=ThemeColors.TEXT_SECONDARY),
+						recibe_dd,
+						obs_tf,
+					],
+					spacing=10,
+				),
+			),
+			actions=[
+				ft.TextButton("Cancelar", on_click=lambda e: setattr(page.dialog, "open", False) or _safe_page_update()),
+				ft.ElevatedButton("Generar PDF", style=JetBrainsTheme.primary_button_style(), on_click=_generate),
 			],
 		)
 		page.dialog.open = True
@@ -571,6 +667,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 		item = mov.get("item") or {}
 		tipo = mov.get("tipo_movimiento") or mov.get("tipo") or "---"
 		fecha = str(mov.get("fecha") or "---")[:19].replace("T", " ")
+		item_id = item.get("id")
 		return ft.Container(
 			width=MOV_TABLE_WIDTH,
 			padding=ft.padding.symmetric(horizontal=14, vertical=8),
@@ -584,6 +681,15 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 					ft.Container(width=220, content=ft.Text(_read_target_name(mov.get("origen")), size=10, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
 					ft.Container(width=220, content=ft.Text(_read_target_name(mov.get("destino")), size=10, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
 					ft.Container(width=120, content=ft.Text(mov.get("ot_id") or "---", size=11, color=ThemeColors.TEXT_SECONDARY, overflow=ft.TextOverflow.ELLIPSIS)),
+					ft.Container(
+						width=48,
+						content=ft.IconButton(
+							icon=ft.icons.PICTURE_AS_PDF,
+							icon_size=16,
+							tooltip="Generar acta para este activo",
+							on_click=(lambda e, iid=item_id: _open_acta_dialog(iid)) if item_id else None,
+						),
+					),
 				],
 				spacing=8,
 			),
@@ -749,6 +855,12 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 								icon=ft.icons.REFRESH_ROUNDED,
 								style=JetBrainsTheme.primary_button_style(),
 								on_click=lambda e: load_data(True),
+							),
+							ft.ElevatedButton(
+								"ACTA ENTREGA-RECEPCION",
+								icon=ft.icons.PICTURE_AS_PDF,
+								style=JetBrainsTheme.primary_button_style(),
+								on_click=lambda e: _open_acta_dialog(),
 							),
 						],
 						spacing=10,

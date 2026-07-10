@@ -24,6 +24,7 @@ class ItemSerializer(serializers.Serializer):
     marca  = serializers.CharField(required=False, allow_blank=True)
     modelo = serializers.CharField(required=False, allow_blank=True)
     serial = serializers.CharField(required=False, allow_blank=True)
+    mac = serializers.CharField(required=False, allow_blank=True)
     numero_factura = serializers.CharField(required=False, allow_blank=True)
     responsable_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     responsable_nombre = serializers.CharField(required=False, allow_blank=True, allow_null=True)

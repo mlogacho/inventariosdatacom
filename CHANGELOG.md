@@ -2,6 +2,38 @@
 
 Todas las modificaciones relevantes del proyecto se registran en este archivo.
 
+## [2026-07-10] - ACTA ENTREGA-RECEPCION para Inventarios + MAC en activos
+
+### Agregado
+- Endpoint `POST /api/inventory/movements/acta-entrega-recepcion/` para generar el PDF de **ACTA DE ENTREGA - RECEPCION**.
+- Generador PDF en backend con formato institucional (encabezado, tabla de items, observaciones y firmas Entrega/Recibe).
+- Boton de generacion de acta en:
+  - vista principal de `KARDEX`
+  - detalle de trazabilidad de activo.
+
+### Cambiado
+- Se incorpora el campo `mac` al modelo de `Item` y su serializacion API.
+- El modal de edicion en KARDEX ahora permite editar el campo `MAC`.
+- Se endurece `deploy_inventarios_v2.sh` con modo seguro por defecto:
+  - sin `reset --hard` salvo `ALLOW_HARD_RESET=1`
+  - sin sobreescritura de `.env` salvo `FORCE_REWRITE_ENV=1`
+  - sin sobreescritura de Nginx salvo `FORCE_REWRITE_NGINX=1`.
+
+### Seguridad operativa
+- Se ajusta `configure_nginx 2.sh` para evitar cambios en vhosts compartidos por defecto.
+- Se corrige `proxy_pass` para usar destinos locales (`127.0.0.1`) y evitar plantillas invalidas.
+- Se incorporan banderas opcionales para modo extendido:
+  - `MANAGE_SHARED_VHOSTS=1`
+  - `MANAGE_DAIA_ACTAS=1`
+  - `RUN_EXTENDED_CHECKS=1`.
+
+### Reglas operativas del acta
+- Items del acta se obtienen automaticamente por movimientos de tipo `SALIDA` e `INSTALACION`.
+- Firma **Entrega**: usuario logueado (via CRM/SSO cuando disponible).
+- Firma **Recibe**: usuario CRM seleccionado en el modal.
+- `Cantidad=1` y `Unidad=Unidad` para los activos incluidos.
+- Ciudad fija `Quito` y fecha actual al momento de generar el documento.
+
 ## [2026-07-01] - Auto-heal de red Docker post-deploy + robustez de dropdowns CRM en KARDEX
 
 ### Corregido

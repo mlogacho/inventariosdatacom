@@ -8,14 +8,19 @@ V-24 Fix: Paginación y endpoint de historial por ítem.
 V-25 Fix: Captura de IP del cliente antes de registrar el movimiento.
 """
 import logging
+from datetime import datetime, timezone
+
+from django.http import HttpResponse
 from rest_framework.views import APIView
 from rest_framework import status
 import mongoengine as me
-from datetime import datetime, timezone
 
+from config.apps.inventory.models.item import Item
 from config.apps.inventory.models.movement import Movement
 from config.apps.inventory.serializers.movement_serializer import MovementSerializer
+from config.apps.inventory.services.acta_entrega_recepcion_service import generate_acta_entrega_recepcion_pdf
 from config.apps.users.permissions.rbac_permission import DRFRBACPermission
+from config.apps.users.services.crm_sso_service import CRMServiceError, get_crm_active_users
 from config.utils.api_response import api_response
 
 import logging
@@ -274,3 +279,146 @@ class MovementStatsView(APIView):
             },
             message="Estadísticas obtenidas correctamente"
         )
+
+
+class MovementActaEntregaRecepcionView(APIView):
+    """Genera el PDF ACTA DE ENTREGA - RECEPCION en base a movimientos."""
+
+    permission_classes = [DRFRBACPermission]
+    resource_name = "movement"
+
+    def post(self, request):
+        try:
+            recibe_user_id = str((request.data or {}).get("recibe_user_id") or "").strip()
+            observacion = str((request.data or {}).get("observacion") or "").strip()
+            item_id = str((request.data or {}).get("item_id") or "").strip()
+
+            if not recibe_user_id:
+                return api_response(
+                    success=False,
+                    message="Debe seleccionar el usuario que recibe.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+
+            auth_payload = request.auth if isinstance(request.auth, dict) else {}
+            crm_token = auth_payload.get("crm_token")
+            if not crm_token:
+                return api_response(
+                    success=False,
+                    message="Sesion ERP no disponible para consultar usuarios CRM.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+
+            try:
+                crm_users = get_crm_active_users(crm_token)
+            except CRMServiceError as exc:
+                return api_response(
+                    success=False,
+                    message=str(exc),
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
+            def _name_of(user: dict) -> str:
+                return (
+                    (user.get("full_name") or "").strip()
+                    or (user.get("username") or "").strip()
+                    or "N/D"
+                )
+
+            def _role_of(user: dict) -> str:
+                profile = user.get("profile") if isinstance(user.get("profile"), dict) else {}
+                return (
+                    (user.get("role_name") or "").strip()
+                    or (profile.get("role_name") or "").strip()
+                    or (user.get("role") or "").strip()
+                    or "Cargo no registrado"
+                )
+
+            entrega_user = next(
+                (u for u in crm_users if (u.get("username") or "").strip() == (request.user.username or "").strip()),
+                None,
+            )
+            recibe_user = next((u for u in crm_users if str(u.get("id")) == recibe_user_id), None)
+
+            if not recibe_user:
+                return api_response(
+                    success=False,
+                    message="El usuario seleccionado para recibe no existe en CRM.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+
+            movimiento_qs = Movement.objects(tipo_movimiento__in=["SALIDA", "INSTALACION"]).order_by("-fecha")
+            if item_id:
+                movimiento_qs = movimiento_qs.filter(item=item_id)
+
+            seen_item_ids = set()
+            selected_movements = []
+            for mov in movimiento_qs:
+                if not mov.item:
+                    continue
+                sid = str(mov.item.id)
+                if sid in seen_item_ids:
+                    continue
+                seen_item_ids.add(sid)
+                selected_movements.append(mov)
+
+            if not selected_movements:
+                return api_response(
+                    success=False,
+                    message="No hay movimientos SALIDA/INSTALACION para generar el acta.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+
+            item_ids = [mov.item.id for mov in selected_movements if mov.item]
+            item_map = {str(it.id): it for it in Item.objects(id__in=item_ids, is_active=True)}
+
+            items_rows = []
+            for mov in selected_movements:
+                it = item_map.get(str(mov.item.id))
+                if not it:
+                    continue
+                items_rows.append(
+                    {
+                        "detalle": it.nombre,
+                        "marca": getattr(it, "marca", "") or "---",
+                        "modelo": getattr(it, "modelo", "") or "---",
+                        "serie": getattr(it, "serial", "") or "---",
+                        "mac": getattr(it, "mac", "") or "",
+                        "cantidad": 1,
+                        "unidad": "Unidad",
+                    }
+                )
+
+            if not items_rows:
+                return api_response(
+                    success=False,
+                    message="No se pudieron preparar items activos para el acta.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+
+            entrega_nombre = _name_of(entrega_user) if entrega_user else (request.user.username or "N/D")
+            entrega_cargo = _role_of(entrega_user) if entrega_user else (getattr(request.user, "rol", "") or "Usuario")
+            recibe_nombre = _name_of(recibe_user)
+            recibe_cargo = _role_of(recibe_user)
+
+            pdf_bytes = generate_acta_entrega_recepcion_pdf(
+                entrega_nombre=entrega_nombre,
+                entrega_cargo=entrega_cargo,
+                recibe_nombre=recibe_nombre,
+                recibe_cargo=recibe_cargo,
+                items=items_rows,
+                observacion=observacion,
+                city="Quito",
+                generated_at=datetime.now(),
+            )
+
+            response = HttpResponse(pdf_bytes, content_type="application/pdf")
+            response["Content-Disposition"] = 'attachment; filename="acta_entrega_recepcion.pdf"'
+            return response
+        except Exception as ex:
+            logger.exception("Error generando ACTA ENTREGA RECEPCION")
+            return api_response(
+                success=False,
+                message=str(ex),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

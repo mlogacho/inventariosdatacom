@@ -2,8 +2,12 @@ import flet as ft
 from core.theme import ThemeColors, JetBrainsTheme
 from components.status_badge import status_badge
 from components.timeline import asset_timeline
-from services.movement_service import get_asset_history
+from services.movement_service import get_asset_history, download_acta_entrega_recepcion
+from services.user_service import list_crm_users
 from core.api_client import APIClient
+from core.session import Session
+import threading
+import webbrowser
 
 def item_traceability_view(page: ft.Page, navigate, item_id=None, item_data=None):
     if not item_id:
@@ -43,6 +47,85 @@ def item_traceability_view(page: ft.Page, navigate, item_id=None, item_data=None
 
     def render_header():
         item = state["item"]
+
+        def show_snack(msg: str, is_error: bool = False):
+            page.snack_bar = ft.SnackBar(
+                ft.Text(msg),
+                bgcolor=ft.colors.RED_400 if is_error else ft.colors.GREEN_700,
+            )
+            page.snack_bar.open = True
+            page.update()
+
+        def open_acta_dialog(_):
+            try:
+                users = list_crm_users() or []
+            except Exception as ex:
+                show_snack(f"No se pudo cargar usuarios CRM: {ex}", True)
+                return
+
+            current_username = ""
+            if Session.user and isinstance(Session.user, dict):
+                current_username = str(Session.user.get("username") or "").strip()
+
+            options = []
+            for u in users:
+                uid = str(u.get("id") or "").strip()
+                username = str(u.get("username") or "").strip()
+                if not uid or username == current_username:
+                    continue
+                full_name = (u.get("full_name") or username).strip()
+                role_name = (u.get("role_name") or "Cargo no registrado").strip()
+                options.append((uid, f"{full_name} | {role_name}"))
+
+            if not options:
+                show_snack("No hay usuarios CRM disponibles para 'Recibe'.", True)
+                return
+
+            recibe_dd = ft.Dropdown(
+                label="Recibe (CRM)",
+                width=430,
+                value=options[0][0],
+                options=[ft.dropdown.Option(key=k, text=t) for k, t in options],
+            )
+            obs_tf = ft.TextField(label="Observacion", multiline=True, min_lines=3, max_lines=4, width=430)
+
+            def do_generate(__):
+                payload = {
+                    "recibe_user_id": str(recibe_dd.value or "").strip(),
+                    "observacion": (obs_tf.value or "").strip(),
+                    "item_id": item_id,
+                }
+
+                if not payload["recibe_user_id"]:
+                    show_snack("Selecciona el usuario que recibe.", True)
+                    return
+
+                page.dialog.open = False
+                page.update()
+
+                def _worker():
+                    try:
+                        show_snack("Generando ACTA...")
+                        pdf_path = download_acta_entrega_recepcion(payload)
+                        webbrowser.open(f"file://{pdf_path}")
+                        show_snack("ACTA generada correctamente")
+                    except Exception as ex:
+                        show_snack(f"Error generando ACTA: {ex}", True)
+
+                threading.Thread(target=_worker, daemon=True).start()
+
+            page.dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Generar ACTA DE ENTREGA - RECEPCION"),
+                content=ft.Column([recibe_dd, obs_tf], tight=True),
+                actions=[
+                    ft.TextButton("Cancelar", on_click=lambda __: setattr(page.dialog, "open", False) or page.update()),
+                    ft.ElevatedButton("Generar PDF", on_click=do_generate),
+                ],
+            )
+            page.dialog.open = True
+            page.update()
+
         header_container.content = ft.Container(
             **JetBrainsTheme.card_style(),
             content=ft.Row([
@@ -64,12 +147,20 @@ def item_traceability_view(page: ft.Page, navigate, item_id=None, item_data=None
                         ft.Text(f"TIPO: {item.get('tipo_item','').upper()}", size=12, color=ThemeColors.TEXT_SECONDARY),
                     ], spacing=10)
                 ], expand=True),
-                ft.ElevatedButton(
-                    "Volver",
-                    icon=ft.icons.ARROW_BACK,
-                    on_click=lambda _: navigate("movements"),
-                    style=JetBrainsTheme.secondary_button_style()
-                )
+                ft.Row([
+                    ft.ElevatedButton(
+                        "ACTA ENTREGA-RECEPCION",
+                        icon=ft.icons.PICTURE_AS_PDF,
+                        on_click=open_acta_dialog,
+                        style=JetBrainsTheme.primary_button_style()
+                    ),
+                    ft.ElevatedButton(
+                        "Volver",
+                        icon=ft.icons.ARROW_BACK,
+                        on_click=lambda _: navigate("movements"),
+                        style=JetBrainsTheme.secondary_button_style()
+                    ),
+                ], spacing=10)
             ], spacing=20)
         )
 

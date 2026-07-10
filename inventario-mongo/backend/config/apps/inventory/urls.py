@@ -50,6 +50,7 @@ from config.apps.inventory.views.movement_views import (
     MovementListCreateView,
     MovementItemHistoryView,
     MovementStatsView,
+    MovementActaEntregaRecepcionView,
 )
 
 from config.apps.inventory.views.kardex_views import KardexDashboardView
@@ -82,6 +83,11 @@ urlpatterns = [
     # Lista global + creación
     path("movements/", MovementListCreateView.as_view(), name="movement-list-create"),
     path("movements/stats/", MovementStatsView.as_view(), name="movement-stats"),
+    path(
+        "movements/acta-entrega-recepcion/",
+        MovementActaEntregaRecepcionView.as_view(),
+        name="movement-acta-entrega-recepcion",
+    ),
     # V-24 Fix: Historial paginado por ítem específico
     path("movements/<str:item_id>/history/", MovementItemHistoryView.as_view(), name="movement-item-history"),
 

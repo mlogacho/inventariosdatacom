@@ -72,6 +72,7 @@ class Item(BaseDocument):
     marca  = me.StringField()
     modelo = me.StringField()
     serial = me.StringField()
+    mac = me.StringField()
     numero_factura = me.StringField()
     responsable_id = me.StringField()
     responsable_nombre = me.StringField()

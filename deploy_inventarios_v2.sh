@@ -70,6 +70,11 @@ BACKEND_ENV="$APP_DIR/inventario-mongo/backend/.env.dev"
 FRONTEND_ENV="$APP_DIR/flet_inventario/.env"
 NGINX_SITE="/etc/nginx/sites-available/inventarios_datacom"
 
+# Modo seguro por defecto: evita acciones destructivas salvo activación explícita.
+ALLOW_HARD_RESET="${ALLOW_HARD_RESET:-0}"
+FORCE_REWRITE_ENV="${FORCE_REWRITE_ENV:-0}"
+FORCE_REWRITE_NGINX="${FORCE_REWRITE_NGINX:-0}"
+
 if docker compose version >/dev/null 2>&1; then
   DC="docker compose"
 elif command -v docker-compose >/dev/null 2>&1; then
@@ -117,8 +122,12 @@ rollback() {
   warn "Iniciando rollback..."
 
   if [ -n "$PRE_COMMIT" ] && [ -d "$APP_DIR/.git" ]; then
-    warn "Restaurando codigo al commit previo: $PRE_COMMIT"
-    git -C "$APP_DIR" reset --hard "$PRE_COMMIT" || true
+    if [ "$ALLOW_HARD_RESET" = "1" ]; then
+      warn "Restaurando codigo al commit previo: $PRE_COMMIT"
+      git -C "$APP_DIR" reset --hard "$PRE_COMMIT" || true
+    else
+      warn "Rollback de codigo omitido (ALLOW_HARD_RESET=0)."
+    fi
   fi
 
   if [ -f "$BACKUP_DIR/backend.env.dev.bak" ]; then
@@ -156,7 +165,13 @@ log "Paso 1/6 - Sincronizando repositorio"
 if [ -d "$APP_DIR/.git" ]; then
   git -C "$APP_DIR" fetch origin "$BRANCH"
   git -C "$APP_DIR" checkout "$BRANCH"
-  git -C "$APP_DIR" reset --hard "origin/$BRANCH"
+  if [ "$ALLOW_HARD_RESET" = "1" ]; then
+    warn "Sincronizacion agresiva habilitada (ALLOW_HARD_RESET=1)."
+    git -C "$APP_DIR" reset --hard "origin/$BRANCH"
+  else
+    log "Sincronizacion segura (fast-forward only)."
+    git -C "$APP_DIR" pull --ff-only origin "$BRANCH"
+  fi
 else
   git clone "$REPO_URL" "$APP_DIR"
   git -C "$APP_DIR" checkout "$BRANCH"
@@ -165,6 +180,7 @@ fi
 log "Paso 2/6 - Generando archivos de entorno"
 DJANGO_SECRET_KEY="$(python3 -c "import secrets; print(secrets.token_urlsafe(64))")"
 
+if [ "$FORCE_REWRITE_ENV" = "1" ] || [ ! -f "$BACKEND_ENV" ]; then
 cat > "$BACKEND_ENV" <<EOF
 DJANGO_DEBUG=False
 DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
@@ -182,10 +198,17 @@ CORS_ALLOWED_ORIGINS=http://${DOMAIN},http://10.11.121.101:8061,http://127.0.0.1
 CRM_API_BASE_URL=${CRM_API_BASE_URL}
 LOG_LEVEL=INFO
 EOF
+else
+  warn "Se preserva $BACKEND_ENV (FORCE_REWRITE_ENV=0)."
+fi
 
+if [ "$FORCE_REWRITE_ENV" = "1" ] || [ ! -f "$FRONTEND_ENV" ]; then
 cat > "$FRONTEND_ENV" <<EOF
 API_BASE_URL=http://backend:8000/api
 EOF
+else
+  warn "Se preserva $FRONTEND_ENV (FORCE_REWRITE_ENV=0)."
+fi
 
 log "Paso 3/6 - Ajustando docker-compose para puertos seguros"
 python3 <<PYEOF
@@ -229,6 +252,7 @@ API_8070="$(curl -s -L -o /dev/null -w "%{http_code}" http://127.0.0.1:8070/api/
 
 log "Paso 7/7 - Aplicando y validando Nginx"
 if command -v nginx >/dev/null 2>&1; then
+if [ "$FORCE_REWRITE_NGINX" = "1" ] || [ ! -f "$NGINX_SITE" ]; then
 cat > "$NGINX_SITE" <<'NGINXEOF'
 server {
     listen 80;
@@ -261,6 +285,9 @@ server {
     }
 }
 NGINXEOF
+else
+  warn "Se preserva $NGINX_SITE (FORCE_REWRITE_NGINX=0)."
+fi
 
 ln -sf "$NGINX_SITE" /etc/nginx/sites-enabled/inventarios_datacom
 nginx -t
