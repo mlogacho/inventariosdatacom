@@ -315,30 +315,19 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                     movement_id = str(m.get("id") or "").strip()
 
                     def _download_acta(_e=None, mid=movement_id):
-                        """
-                        Descarga el PDF del ACTA navegando en la MISMA ventana (_self).
-                        Firefox NO bloquea window.open(url, '_self') porque no es popup —
-                        es navegación en la ventana actual.
-                        Content-Disposition: attachment en el backend hace que el browser
-                        descargue el archivo sin salir de la app Flet.
-                        """
                         public_api = os.getenv(
                             "PUBLIC_API_BASE_URL",
-                            "http://10.11.121.101:8070/api",
+                            "http://inventarios.datacom.ec",
                         ).rstrip("/")
                         token = str(Session.token or "").strip()
                         if not token:
                             show_snack("Sesión expirada. Vuelve a ingresar.", True)
                             return
                         url = (
-                            f"{public_api}/inventory/movements/"
+                            f"{public_api}/api/inventory/movements/"
                             f"{urllib.parse.quote(mid, safe='')}/acta-pdf/"
                             f"?token={urllib.parse.quote(token, safe='')}"
                         )
-                        # _self = navegación en la misma pestaña.
-                        # Firefox permite siempre window.open(url, '_self').
-                        # El servidor responde con Content-Disposition: attachment
-                        # por lo que el browser descarga sin navegar.
                         page.launch_url(url, web_window_name="_self")
 
                     # Avatar inicial del responsable
