@@ -536,12 +536,24 @@ class MovementActaPDFDownloadView(APIView):
                 )
 
             acta_pdf = getattr(movement, "acta_pdf", None)
-            if not acta_pdf and str(getattr(movement, "module_source", "") or "").upper() == "ACTA_ENTREGA_RECEPCION":
+
+            module_source = str(getattr(movement, "module_source", "") or "").strip().upper()
+            notes_text = str(getattr(movement, "notes", "") or "").strip().upper()
+            origen = movement.origen if isinstance(movement.origen, dict) else {}
+            destino = movement.destino if isinstance(movement.destino, dict) else {}
+            destino_estado = str(destino.get("estado") or "").strip().upper()
+            has_recibe = bool(str(destino.get("recibe_user_id") or "").strip() or str(destino.get("recibe_nombre") or "").strip())
+
+            is_acta_like = (
+                module_source == "ACTA_ENTREGA_RECEPCION"
+                or "ACTA ENTREGA-RECEPCION" in notes_text
+                or destino_estado == "DESCARGO"
+                or has_recibe
+            )
+
+            if not acta_pdf and is_acta_like:
                 item = getattr(movement, "item", None)
                 if item:
-                    origen = movement.origen if isinstance(movement.origen, dict) else {}
-                    destino = movement.destino if isinstance(movement.destino, dict) else {}
-
                     entrega_nombre = str(origen.get("nombre") or "").strip() or str(getattr(movement.responsable, "username", "") or "N/D")
                     entrega_cargo = str(origen.get("cargo") or "").strip() or "Usuario"
                     recibe_nombre = str(destino.get("nombre") or destino.get("recibe_nombre") or "").strip() or "N/D"
@@ -583,7 +595,7 @@ class MovementActaPDFDownloadView(APIView):
                 )
 
             filename = str(getattr(movement, "acta_filename", "") or "acta_entrega_recepcion.pdf")
-            response = HttpResponse(acta_pdf, content_type="application/pdf")
+            response = HttpResponse(bytes(acta_pdf), content_type="application/pdf")
             response["Content-Disposition"] = f'attachment; filename="{filename}"'
             return response
         except Exception as ex:

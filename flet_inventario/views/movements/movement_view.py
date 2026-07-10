@@ -311,7 +311,16 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                     fecha_str = (fecha_raw[:16].replace("T", " ")
                                  if len(fecha_raw) >= 16 else fecha_raw)
                     has_acta_pdf = bool(m.get("has_acta_pdf"))
-                    has_acta_available = has_acta_pdf or module_source == "ACTA_ENTREGA_RECEPCION"
+                    notes_text = str(m.get("notes") or "").strip().upper()
+                    destino_estado = str(destino.get("estado") or "").strip().upper()
+                    has_recibe = bool(str(destino.get("recibe_user_id") or "").strip() or str(destino.get("recibe_nombre") or "").strip())
+                    has_acta_available = (
+                        has_acta_pdf
+                        or module_source == "ACTA_ENTREGA_RECEPCION"
+                        or "ACTA ENTREGA-RECEPCION" in notes_text
+                        or destino_estado == "DESCARGO"
+                        or has_recibe
+                    )
                     movement_id = str(m.get("id") or "").strip()
 
                     def _download_acta(_e=None, current_movement_id=movement_id):
