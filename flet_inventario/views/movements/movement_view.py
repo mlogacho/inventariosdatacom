@@ -5,8 +5,7 @@ from core.theme import ThemeColors, JetBrainsTheme
 from components.status_badge import status_badge
 from components.stats_card import stats_card
 from components.timeline import asset_timeline
-from services.movement_service import list_movements, get_movement_stats, get_asset_history
-from core.session import Session
+from services.movement_service import list_movements, get_movement_stats, get_asset_history, get_movement_acta_pdf_content
 import os
 from services.item_service import list_items
 from services.store_service import list_stores
@@ -326,20 +325,33 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                     movement_id = str(m.get("id") or "").strip()
 
                     def _download_acta(_e=None, current_movement_id=movement_id):
-                        try:
-                            # URL pública del API: soporta descarga directa en el navegador
-                            public_api = os.getenv(
-                                "PUBLIC_API_BASE_URL",
-                                "http://10.11.121.101:8070/api",
-                            ).rstrip("/")
-                            token = str(Session.token or "").strip()
-                            url = f"{public_api}/inventory/movements/{current_movement_id}/acta-pdf/"
-                            if token:
-                                url = f"{url}?token={token}"
-                            page.launch_url(url)
-                            show_snack("Descargando ACTA...")
-                        except Exception as ex:
-                            show_snack(f"No se pudo descargar el ACTA: {ex}", True)
+                        show_snack("Preparando ACTA...")
+
+                        def _worker():
+                            try:
+                                pdf_bytes = get_movement_acta_pdf_content(current_movement_id)
+                                pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
+                                # Blob URL download: nunca bloqueado por el navegador
+                                js = (
+                                    "(function(){"
+                                    "var b=atob('" + pdf_b64 + "');"
+                                    "var n=new Uint8Array(b.length);"
+                                    "for(var i=0;i<b.length;i++)n[i]=b.charCodeAt(i);"
+                                    "var bl=new Blob([n],{type:'application/pdf'});"
+                                    "var u=URL.createObjectURL(bl);"
+                                    "var a=document.createElement('a');"
+                                    "a.href=u;a.download='acta_entrega_recepcion.pdf';"
+                                    "document.body.appendChild(a);a.click();"
+                                    "document.body.removeChild(a);"
+                                    "setTimeout(function(){URL.revokeObjectURL(u);},1000);"
+                                    "})();"
+                                )
+                                page.eval_js(js)
+                                show_snack("ACTA descargada")
+                            except Exception as ex:
+                                show_snack(f"Error al descargar ACTA: {ex}", True)
+
+                        threading.Thread(target=_worker, daemon=True).start()
 
                     # Avatar inicial del responsable
                     avatar = ft.Container(
