@@ -300,6 +300,10 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                     prev      = origen.get("nombre") or origen.get("estado", "INICIO")
                     new_state = destino.get("nombre") or destino.get("estado", "---")
                     tipo      = m.get("tipo_movimiento", "---")
+                    module_source = str(m.get("module_source") or "").strip().upper()
+                    if module_source == "ACTA_ENTREGA_RECEPCION":
+                        receiver_name = destino.get("nombre") or destino.get("recibe_nombre") or new_state
+                        new_state = f"DESCARGO A {receiver_name}"
                     resp_obj  = m.get("responsable", {})
                     resp      = (resp_obj.get("username", "---")
                                  if isinstance(resp_obj, dict) else str(resp_obj))
