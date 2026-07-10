@@ -314,22 +314,32 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                                  if len(fecha_raw) >= 16 else fecha_raw)
                     movement_id = str(m.get("id") or "").strip()
 
-                    # Construir la URL del ACTA al renderizar la fila.
-                    # Usar url= en el botón crea un <a href> real en Firefox,
-                    # sin window.open(), por lo que nunca se bloquea como popup.
-                    _public_api = os.getenv(
-                        "PUBLIC_API_BASE_URL",
-                        "http://10.11.121.101:8070/api",
-                    ).rstrip("/")
-                    _token = str(Session.token or "").strip()
-                    if movement_id and _token:
-                        acta_url = (
-                            f"{_public_api}/inventory/movements/"
-                            f"{urllib.parse.quote(movement_id, safe='')}/acta-pdf/"
-                            f"?token={urllib.parse.quote(_token, safe='')}"
+                    def _download_acta(_e=None, mid=movement_id):
+                        """
+                        Descarga el PDF del ACTA navegando en la MISMA ventana (_self).
+                        Firefox NO bloquea window.open(url, '_self') porque no es popup —
+                        es navegación en la ventana actual.
+                        Content-Disposition: attachment en el backend hace que el browser
+                        descargue el archivo sin salir de la app Flet.
+                        """
+                        public_api = os.getenv(
+                            "PUBLIC_API_BASE_URL",
+                            "http://10.11.121.101:8070/api",
+                        ).rstrip("/")
+                        token = str(Session.token or "").strip()
+                        if not token:
+                            show_snack("Sesión expirada. Vuelve a ingresar.", True)
+                            return
+                        url = (
+                            f"{public_api}/inventory/movements/"
+                            f"{urllib.parse.quote(mid, safe='')}/acta-pdf/"
+                            f"?token={urllib.parse.quote(token, safe='')}"
                         )
-                    else:
-                        acta_url = None
+                        # _self = navegación en la misma pestaña.
+                        # Firefox permite siempre window.open(url, '_self').
+                        # El servidor responde con Content-Disposition: attachment
+                        # por lo que el browser descarga sin navegar.
+                        page.launch_url(url, web_window_name="_self")
 
                     # Avatar inicial del responsable
                     avatar = ft.Container(
@@ -399,16 +409,13 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                                             item_data=it
                                         )
                                     ),
-                                    # url= crea un <a href> real en el navegador,
-                                    # no usa window.open() — nunca se bloquea como popup
                                     ft.IconButton(
                                         icon=ft.icons.PICTURE_AS_PDF,
-                                        icon_color=ThemeColors.ACCENT_BLUE if acta_url else ThemeColors.TEXT_SECONDARY,
+                                        icon_color=ThemeColors.ACCENT_BLUE if movement_id else ThemeColors.TEXT_SECONDARY,
                                         icon_size=20,
-                                        tooltip="Descargar ACTA" if acta_url else "Sin sesión activa",
-                                        url=acta_url,
-                                        url_target="_blank",
-                                        disabled=not bool(acta_url),
+                                        tooltip="Descargar ACTA",
+                                        on_click=_download_acta if movement_id else None,
+                                        disabled=not movement_id,
                                     ),
                                 ], spacing=2)),
                             ]
