@@ -1,9 +1,11 @@
 import flet as ft
+import threading
+import webbrowser
 from core.theme import ThemeColors, JetBrainsTheme
 from components.status_badge import status_badge
 from components.stats_card import stats_card
 from components.timeline import asset_timeline
-from services.movement_service import list_movements, get_movement_stats, get_asset_history
+from services.movement_service import list_movements, get_movement_stats, get_asset_history, download_movement_acta_pdf
 from services.item_service import list_items
 from services.store_service import list_stores
 
@@ -147,6 +149,15 @@ def movement_view(page: ft.Page, navigate, **kwargs):
     # Loader
     loading = ft.ProgressBar(visible=False, color=ThemeColors.ACCENT_BLUE)
 
+    def show_snack(message: str, is_error: bool = False):
+        page.snack_bar = ft.SnackBar(
+            content=ft.Text(message, color=ft.colors.WHITE),
+            bgcolor=ft.colors.RED_700 if is_error else ft.colors.GREEN_700,
+            duration=4000,
+        )
+        page.snack_bar.open = True
+        page.update()
+
     inventory_hint_title = ft.Text("Coincidencias en Inventario", size=14, weight="bold", color=ThemeColors.TEXT_PRIMARY)
     inventory_hint_rows = ft.Column(spacing=6)
     inventory_hint_panel = ft.Container(
@@ -284,8 +295,10 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                     item      = m.get("item", {})
                     item_name = item.get("nombre", "Desconocido")
                     item_code = item.get("codigo", "---")
-                    prev      = m.get("origen", {}).get("estado", "INICIO")
-                    new_state = m.get("destino", {}).get("estado", "---")
+                    origen    = m.get("origen") if isinstance(m.get("origen"), dict) else {}
+                    destino   = m.get("destino") if isinstance(m.get("destino"), dict) else {}
+                    prev      = origen.get("nombre") or origen.get("estado", "INICIO")
+                    new_state = destino.get("nombre") or destino.get("estado", "---")
                     tipo      = m.get("tipo_movimiento", "---")
                     resp_obj  = m.get("responsable", {})
                     resp      = (resp_obj.get("username", "---")
@@ -293,6 +306,20 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                     fecha_raw = m.get("fecha", "---")
                     fecha_str = (fecha_raw[:16].replace("T", " ")
                                  if len(fecha_raw) >= 16 else fecha_raw)
+                    has_acta_pdf = bool(m.get("has_acta_pdf"))
+                    movement_id = str(m.get("id") or "").strip()
+
+                    def _download_acta(_e=None, current_movement_id=movement_id):
+                        def _worker():
+                            try:
+                                show_snack("Descargando ACTA del movimiento...")
+                                pdf_path = download_movement_acta_pdf(current_movement_id)
+                                webbrowser.open(f"file://{pdf_path}")
+                                show_snack(f"ACTA descargada en: {pdf_path}")
+                            except Exception as ex:
+                                show_snack(f"No se pudo descargar el ACTA: {ex}", True)
+
+                        threading.Thread(target=_worker, daemon=True).start()
 
                     # Avatar inicial del responsable
                     avatar = ft.Container(
@@ -350,17 +377,27 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                                 ft.DataCell(ft.Text(fecha_str, size=12,
                                                     color=ThemeColors.TEXT_PRIMARY)),
                                 # ── Acción ──────────────────────────────────
-                                ft.DataCell(ft.IconButton(
-                                    icon=ft.icons.TIMELINE,
-                                    icon_color=ThemeColors.ACCENT_BLUE,
-                                    icon_size=20,
-                                    tooltip="Ver Trazabilidad Completa",
-                                    on_click=lambda e, it=item: navigate(
-                                        "item_traceability",
-                                        item_id=it["id"],
-                                        item_data=it
-                                    )
-                                )),
+                                ft.DataCell(ft.Row([
+                                    ft.IconButton(
+                                        icon=ft.icons.TIMELINE,
+                                        icon_color=ThemeColors.ACCENT_BLUE,
+                                        icon_size=20,
+                                        tooltip="Ver Trazabilidad Completa",
+                                        on_click=lambda e, it=item: navigate(
+                                            "item_traceability",
+                                            item_id=it["id"],
+                                            item_data=it
+                                        )
+                                    ),
+                                    ft.IconButton(
+                                        icon=ft.icons.PICTURE_AS_PDF,
+                                        icon_color=ThemeColors.ACCENT_BLUE if has_acta_pdf else ThemeColors.TEXT_SECONDARY,
+                                        icon_size=20,
+                                        tooltip="Descargar ACTA asociada" if has_acta_pdf else "Sin ACTA asociada",
+                                        disabled=(not has_acta_pdf) or (not movement_id),
+                                        on_click=_download_acta if has_acta_pdf and movement_id else None,
+                                    ),
+                                ], spacing=2)),
                             ]
                         )
                     )
@@ -542,7 +579,6 @@ def movement_view(page: ft.Page, navigate, **kwargs):
         location_filter_label.visible = True
         clear_location_btn.visible = True
 
-    import threading
     threading.Timer(0.1, load_stats).start()
     threading.Timer(0.2, apply_filters).start()
 

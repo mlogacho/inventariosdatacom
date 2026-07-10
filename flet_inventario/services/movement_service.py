@@ -69,3 +69,28 @@ def download_acta_entrega_recepcion(payload: dict | None = None) -> str:
 
     target_path.write_bytes(resp.content)
     return str(target_path)
+
+
+def download_movement_acta_pdf(movement_id: str) -> str:
+    """Descarga ACTA PDF ya asociada a un movimiento y devuelve ruta local."""
+    movement_id = str(movement_id or "").strip()
+    if not movement_id:
+        raise ValueError("movement_id es requerido")
+
+    base_url = os.getenv("API_BASE_URL", "http://localhost:8000/api").rstrip("/")
+    url = f"{base_url}/inventory/movements/{movement_id}/acta-pdf/"
+
+    headers = {}
+    if Session.token:
+        headers["Authorization"] = f"Bearer {Session.token}"
+
+    resp = requests.get(url, headers=headers, timeout=45)
+    resp.raise_for_status()
+
+    download_dir = Path.home() / "Downloads" / "InventariosDatacom" / "Actas"
+    download_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    target_path = download_dir / f"acta_movimiento_{movement_id}_{timestamp}.pdf"
+    target_path.write_bytes(resp.content)
+    return str(target_path)

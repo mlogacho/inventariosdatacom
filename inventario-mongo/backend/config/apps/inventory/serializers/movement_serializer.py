@@ -122,4 +122,7 @@ class MovementSerializer(serializers.Serializer):
                 "username": resp.username,
             }
 
+        ret["has_acta_pdf"] = bool(getattr(instance, "acta_pdf", None))
+        ret["acta_filename"] = str(getattr(instance, "acta_filename", "") or "")
+
         return ret

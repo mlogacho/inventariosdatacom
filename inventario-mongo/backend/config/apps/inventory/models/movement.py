@@ -99,6 +99,11 @@ class Movement(BaseDocument):
     new_quantity = me.IntField(default=0)
     delta = me.IntField(default=0)
 
+    # ── Evidencia documental asociada al movimiento ────────────
+    # Se usa para ACTA ENTREGA-RECEPCION y permite descarga posterior.
+    acta_pdf = me.BinaryField(required=False)
+    acta_filename = me.StringField(default="")
+
     # ── Vinculación a OT (V-40) ────────────────────────────────
     ot_id = me.StringField(required=False)
 

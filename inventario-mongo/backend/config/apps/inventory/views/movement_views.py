@@ -471,25 +471,29 @@ class MovementActaEntregaRecepcionView(APIView):
                     estado_actual = str(getattr(it, "estado", "") or "N/D")
                     Movement(
                         item=it,
-                        tipo_movimiento=OperationType.AJUSTE,
+                        tipo_movimiento=OperationType.SALIDA,
                         fecha=datetime.now(timezone.utc),
                         responsable=responsable_user,
                         origen={
-                            "tipo": "ACTA",
+                            "tipo": "USUARIO",
+                            "nombre": entrega_nombre,
+                            "cargo": entrega_cargo,
                             "estado": estado_actual,
                             "ubicacion": getattr(it, "ubicacion_nombre", "") or "---",
                             "cliente": getattr(it, "cliente_nombre", "") or "---",
                         },
                         destino={
-                            "tipo": "ACTA",
-                            "estado": estado_actual,
+                            "tipo": "USUARIO",
+                            "nombre": recibe_nombre,
+                            "cargo": recibe_cargo,
+                            "estado": "DESCARGO",
                             "ubicacion": getattr(it, "ubicacion_nombre", "") or "---",
                             "cliente": getattr(it, "cliente_nombre", "") or "---",
                             "recibe_user_id": recibe_user_id,
                             "recibe_nombre": recibe_nombre,
                         },
                         estado_anterior={"estado": estado_actual},
-                        estado_nuevo={"estado": estado_actual},
+                        estado_nuevo={"estado": "DESCARGO"},
                         ip_address=client_ip,
                         module_source="ACTA_ENTREGA_RECEPCION",
                         notes=notes_prefix,
@@ -497,6 +501,8 @@ class MovementActaEntregaRecepcionView(APIView):
                         previous_quantity=1,
                         new_quantity=1,
                         delta=0,
+                        acta_pdf=pdf_bytes,
+                        acta_filename="acta_entrega_recepcion.pdf",
                     ).save()
             else:
                 logger.warning("No se pudo registrar movimiento de ACTA: usuario responsable no resuelto")
@@ -506,6 +512,43 @@ class MovementActaEntregaRecepcionView(APIView):
             return response
         except Exception as ex:
             logger.exception("Error generando ACTA ENTREGA RECEPCION")
+            return api_response(
+                success=False,
+                message=str(ex),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class MovementActaPDFDownloadView(APIView):
+    """Descarga el PDF del ACTA asociado a un movimiento."""
+
+    permission_classes = [DRFRBACPermission]
+    resource_name = "movement"
+
+    def get(self, request, movement_id):
+        try:
+            movement = Movement.objects(id=movement_id).first()
+            if not movement:
+                return api_response(
+                    success=False,
+                    message="Movimiento no encontrado.",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                )
+
+            acta_pdf = getattr(movement, "acta_pdf", None)
+            if not acta_pdf:
+                return api_response(
+                    success=False,
+                    message="Este movimiento no tiene ACTA PDF asociada.",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                )
+
+            filename = str(getattr(movement, "acta_filename", "") or "acta_entrega_recepcion.pdf")
+            response = HttpResponse(acta_pdf, content_type="application/pdf")
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as ex:
+            logger.exception("Error descargando ACTA PDF de movimiento")
             return api_response(
                 success=False,
                 message=str(ex),
