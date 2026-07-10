@@ -316,19 +316,13 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                     notes_text = str(m.get("notes") or "").strip().upper()
                     destino_estado = str(destino.get("estado") or "").strip().upper()
                     has_recibe = bool(str(destino.get("recibe_user_id") or "").strip() or str(destino.get("recibe_nombre") or "").strip())
-                    has_acta_available = (
-                        has_acta_pdf
-                        or module_source == "ACTA_ENTREGA_RECEPCION"
-                        or "ACTA ENTREGA-RECEPCION" in notes_text
-                        or destino_estado == "DESCARGO"
-                        or has_recibe
-                    )
                     movement_id = str(m.get("id") or "").strip()
+                    # Botón PDF activo para cualquier movimiento con ID válido;
+                    # el backend determina si puede generar/devolver el ACTA.
+                    has_acta_available = bool(movement_id)
 
                     def _download_acta(_e=None, current_movement_id=movement_id):
-                        """Descarga ACTA abriendo URL directa en nueva pestaña.
-                        Llamado sin thread para mantener contexto de gesto del usuario.
-                        """
+                        """Abre ACTA PDF en nueva pestaña usando URL directa con token."""
                         try:
                             public_api = os.getenv(
                                 "PUBLIC_API_BASE_URL",
@@ -341,8 +335,8 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                             )
                             if token:
                                 url = f"{url}?token={urllib.parse.quote(token, safe='')}"
+                            show_snack(f"Abriendo ACTA...")
                             page.launch_url(url)
-                            show_snack("Abriendo ACTA en nueva pestaña...")
                         except Exception as ex:
                             show_snack(f"Error al abrir ACTA: {ex}", True)
 
@@ -416,11 +410,10 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                                     ),
                                     ft.IconButton(
                                         icon=ft.icons.PICTURE_AS_PDF,
-                                        icon_color=ThemeColors.ACCENT_BLUE if has_acta_available else ThemeColors.TEXT_SECONDARY,
+                                        icon_color=ThemeColors.ACCENT_BLUE,
                                         icon_size=20,
-                                        tooltip="Descargar ACTA asociada" if has_acta_available else "Sin ACTA asociada",
-                                        disabled=(not has_acta_available) or (not movement_id),
-                                        on_click=_download_acta if has_acta_available and movement_id else None,
+                                        tooltip="Descargar ACTA de este movimiento",
+                                        on_click=_download_acta,
                                     ),
                                 ], spacing=2)),
                             ]
