@@ -540,6 +540,17 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			show_snack("No hay usuarios CRM disponibles para seleccionar 'Recibe'.", is_error=True)
 			return
 
+		selectable_items = [it for it in items_all if str(it.get("id") or "").strip()]
+		if not selectable_items:
+			show_snack("No hay items disponibles para generar el acta. Ajusta filtros e intenta nuevamente.", is_error=True)
+			return
+
+		selected_item_ids = set()
+		if item_id:
+			selected_item_ids.add(str(item_id))
+		elif selectable_items:
+			selected_item_ids.add(str(selectable_items[0].get("id")))
+
 		recibe_dd = ft.Dropdown(
 			label="Recibe (CRM)",
 			width=500,
@@ -564,15 +575,67 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			**JetBrainsTheme.input_style(),
 		)
 
+		selected_count_txt = ft.Text("", color=ThemeColors.TEXT_SECONDARY)
+
+		def _item_label(it: dict) -> str:
+			codigo = str(it.get("codigo") or "---")
+			nombre = str(it.get("nombre") or "Activo")
+			serial = str(it.get("serial") or "---")
+			return f"{codigo} | {nombre} | Serie: {serial}"
+
+		items_check_column = ft.Column(spacing=6, height=220, scroll=ft.ScrollMode.AUTO)
+
+		def _refresh_selected_count():
+			selected_count_txt.value = f"Items seleccionados: {len(selected_item_ids)}"
+
+		def _render_item_checkboxes():
+			items_check_column.controls.clear()
+			for it in selectable_items:
+				iid = str(it.get("id"))
+				chk = ft.Checkbox(
+					label=_item_label(it),
+					value=(iid in selected_item_ids),
+				)
+
+				def _on_change(e, current_id=iid):
+					if e.control.value:
+						selected_item_ids.add(current_id)
+					else:
+						selected_item_ids.discard(current_id)
+					_refresh_selected_count()
+					_safe_page_update()
+
+				chk.on_change = _on_change
+				items_check_column.controls.append(chk)
+			_refresh_selected_count()
+
+		def _select_all_items(_):
+			selected_item_ids.clear()
+			for it in selectable_items:
+				selected_item_ids.add(str(it.get("id")))
+			_render_item_checkboxes()
+			_safe_page_update()
+
+		def _clear_selected_items(_):
+			selected_item_ids.clear()
+			_render_item_checkboxes()
+			_safe_page_update()
+
+		_render_item_checkboxes()
+
 		def _generate(_):
 			recibe_id = str(recibe_dd.value or "").strip()
 			if not recibe_id:
 				show_snack("Debes seleccionar el usuario que recibe.", is_error=True)
 				return
+			if not selected_item_ids:
+				show_snack("Debes seleccionar al menos un item para generar el acta.", is_error=True)
+				return
 
 			payload = {
 				"recibe_user_id": recibe_id,
 				"observacion": (obs_tf.value or "").strip(),
+				"item_ids": list(selected_item_ids),
 			}
 			if item_id:
 				payload["item_id"] = item_id
@@ -594,9 +657,26 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			modal=True,
 			title=ft.Text("Generar ACTA DE ENTREGA - RECEPCION", weight="bold"),
 			content=ft.Container(
-				width=540,
+				width=720,
 				content=ft.Column(
 					[
+						ft.Text("Selecciona item o items a entregar", color=ThemeColors.TEXT_SECONDARY),
+						ft.Row(
+							[
+								ft.TextButton("Seleccionar todos", on_click=_select_all_items),
+								ft.TextButton("Limpiar seleccion", on_click=_clear_selected_items),
+								selected_count_txt,
+							],
+							alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+						),
+						ft.Container(
+							height=240,
+							padding=8,
+							border=ft.border.all(1, ft.colors.with_opacity(0.12, ft.colors.WHITE)),
+							border_radius=10,
+							content=items_check_column,
+						),
+						ft.Divider(height=1, color=ft.colors.with_opacity(0.10, ft.colors.WHITE)),
 						ft.Text("Entrega: usuario logueado (CRM)", color=ThemeColors.TEXT_SECONDARY),
 						recibe_dd,
 						obs_tf,

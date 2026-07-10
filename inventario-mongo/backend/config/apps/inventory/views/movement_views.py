@@ -292,6 +292,7 @@ class MovementActaEntregaRecepcionView(APIView):
             recibe_user_id = str((request.data or {}).get("recibe_user_id") or "").strip()
             observacion = str((request.data or {}).get("observacion") or "").strip()
             item_id = str((request.data or {}).get("item_id") or "").strip()
+            item_ids_raw = (request.data or {}).get("item_ids") or []
 
             if not recibe_user_id:
                 return api_response(
@@ -347,47 +348,84 @@ class MovementActaEntregaRecepcionView(APIView):
                     status_code=status.HTTP_400_BAD_REQUEST,
                 )
 
-            movimiento_qs = Movement.objects(tipo_movimiento__in=["SALIDA", "INSTALACION"]).order_by("-fecha")
-            if item_id:
-                movimiento_qs = movimiento_qs.filter(item=item_id)
-
-            seen_item_ids = set()
-            selected_movements = []
-            for mov in movimiento_qs:
-                if not mov.item:
-                    continue
-                sid = str(mov.item.id)
-                if sid in seen_item_ids:
-                    continue
-                seen_item_ids.add(sid)
-                selected_movements.append(mov)
-
-            if not selected_movements:
-                return api_response(
-                    success=False,
-                    message="No hay movimientos SALIDA/INSTALACION para generar el acta.",
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                )
-
-            item_ids = [mov.item.id for mov in selected_movements if mov.item]
-            item_map = {str(it.id): it for it in Item.objects(id__in=item_ids, is_active=True)}
+            normalized_ids = []
+            if isinstance(item_ids_raw, list):
+                for raw in item_ids_raw:
+                    sid = str(raw or "").strip()
+                    if sid and sid not in normalized_ids:
+                        normalized_ids.append(sid)
+            if item_id and item_id not in normalized_ids:
+                normalized_ids.append(item_id)
 
             items_rows = []
-            for mov in selected_movements:
-                it = item_map.get(str(mov.item.id))
-                if not it:
-                    continue
-                items_rows.append(
-                    {
-                        "detalle": it.nombre,
-                        "marca": getattr(it, "marca", "") or "---",
-                        "modelo": getattr(it, "modelo", "") or "---",
-                        "serie": getattr(it, "serial", "") or "---",
-                        "mac": getattr(it, "mac", "") or "",
-                        "cantidad": 1,
-                        "unidad": "Unidad",
-                    }
-                )
+
+            if normalized_ids:
+                selected_items = []
+                item_map = {
+                    str(it.id): it
+                    for it in Item.objects(id__in=normalized_ids, is_active=True)
+                }
+                for sid in normalized_ids:
+                    if sid in item_map:
+                        selected_items.append(item_map[sid])
+
+                if not selected_items:
+                    return api_response(
+                        success=False,
+                        message="Los items seleccionados no existen o estan inactivos.",
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                for it in selected_items:
+                    items_rows.append(
+                        {
+                            "detalle": it.nombre,
+                            "marca": getattr(it, "marca", "") or "---",
+                            "modelo": getattr(it, "modelo", "") or "---",
+                            "serie": getattr(it, "serial", "") or "---",
+                            "mac": getattr(it, "mac", "") or "",
+                            "cantidad": 1,
+                            "unidad": "Unidad",
+                        }
+                    )
+            else:
+                movimiento_qs = Movement.objects(tipo_movimiento__in=["SALIDA", "INSTALACION"]).order_by("-fecha")
+
+                seen_item_ids = set()
+                selected_movements = []
+                for mov in movimiento_qs:
+                    if not mov.item:
+                        continue
+                    sid = str(mov.item.id)
+                    if sid in seen_item_ids:
+                        continue
+                    seen_item_ids.add(sid)
+                    selected_movements.append(mov)
+
+                if not selected_movements:
+                    return api_response(
+                        success=False,
+                        message="Debe seleccionar al menos un item para generar el acta.",
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                fallback_item_ids = [mov.item.id for mov in selected_movements if mov.item]
+                item_map = {str(it.id): it for it in Item.objects(id__in=fallback_item_ids, is_active=True)}
+                for mov in selected_movements:
+                    it = item_map.get(str(mov.item.id))
+                    if not it:
+                        continue
+                    items_rows.append(
+                        {
+                            "detalle": it.nombre,
+                            "marca": getattr(it, "marca", "") or "---",
+                            "modelo": getattr(it, "modelo", "") or "---",
+                            "serie": getattr(it, "serial", "") or "---",
+                            "mac": getattr(it, "mac", "") or "",
+                            "cantidad": 1,
+                            "unidad": "Unidad",
+                        }
+                    )
 
             if not items_rows:
                 return api_response(

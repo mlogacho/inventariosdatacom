@@ -94,6 +94,7 @@ def item_traceability_view(page: ft.Page, navigate, item_id=None, item_data=None
                     "recibe_user_id": str(recibe_dd.value or "").strip(),
                     "observacion": (obs_tf.value or "").strip(),
                     "item_id": item_id,
+                    "item_ids": [item_id],
                 }
 
                 if not payload["recibe_user_id"]:

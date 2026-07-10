@@ -111,6 +111,7 @@ def movement_detail_view(page, item, go_menu):
                 "recibe_user_id": str(recibe_dd.value or "").strip(),
                 "observacion": (obs_tf.value or "").strip(),
                 "item_id": item.get("id"),
+                "item_ids": [item.get("id")],
             }
 
             if not payload["recibe_user_id"]:
