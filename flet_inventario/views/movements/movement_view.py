@@ -311,6 +311,7 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                     fecha_str = (fecha_raw[:16].replace("T", " ")
                                  if len(fecha_raw) >= 16 else fecha_raw)
                     has_acta_pdf = bool(m.get("has_acta_pdf"))
+                    has_acta_available = has_acta_pdf or module_source == "ACTA_ENTREGA_RECEPCION"
                     movement_id = str(m.get("id") or "").strip()
 
                     def _download_acta(_e=None, current_movement_id=movement_id):
@@ -395,11 +396,11 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                                     ),
                                     ft.IconButton(
                                         icon=ft.icons.PICTURE_AS_PDF,
-                                        icon_color=ThemeColors.ACCENT_BLUE if has_acta_pdf else ThemeColors.TEXT_SECONDARY,
+                                        icon_color=ThemeColors.ACCENT_BLUE if has_acta_available else ThemeColors.TEXT_SECONDARY,
                                         icon_size=20,
-                                        tooltip="Descargar ACTA asociada" if has_acta_pdf else "Sin ACTA asociada",
-                                        disabled=(not has_acta_pdf) or (not movement_id),
-                                        on_click=_download_acta if has_acta_pdf and movement_id else None,
+                                        tooltip="Descargar ACTA asociada" if has_acta_available else "Sin ACTA asociada",
+                                        disabled=(not has_acta_available) or (not movement_id),
+                                        on_click=_download_acta if has_acta_available and movement_id else None,
                                     ),
                                 ], spacing=2)),
                             ]

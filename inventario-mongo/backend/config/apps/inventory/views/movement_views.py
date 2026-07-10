@@ -536,6 +536,45 @@ class MovementActaPDFDownloadView(APIView):
                 )
 
             acta_pdf = getattr(movement, "acta_pdf", None)
+            if not acta_pdf and str(getattr(movement, "module_source", "") or "").upper() == "ACTA_ENTREGA_RECEPCION":
+                item = getattr(movement, "item", None)
+                if item:
+                    origen = movement.origen if isinstance(movement.origen, dict) else {}
+                    destino = movement.destino if isinstance(movement.destino, dict) else {}
+
+                    entrega_nombre = str(origen.get("nombre") or "").strip() or str(getattr(movement.responsable, "username", "") or "N/D")
+                    entrega_cargo = str(origen.get("cargo") or "").strip() or "Usuario"
+                    recibe_nombre = str(destino.get("nombre") or destino.get("recibe_nombre") or "").strip() or "N/D"
+                    recibe_cargo = str(destino.get("cargo") or "").strip() or "Cargo no registrado"
+
+                    items_rows = [
+                        {
+                            "detalle": getattr(item, "nombre", "") or "Activo",
+                            "marca": getattr(item, "marca", "") or "---",
+                            "modelo": getattr(item, "modelo", "") or "---",
+                            "serie": getattr(item, "serial", "") or "---",
+                            "mac": getattr(item, "mac", "") or "",
+                            "cantidad": 1,
+                            "unidad": "Unidad",
+                        }
+                    ]
+
+                    acta_pdf = generate_acta_entrega_recepcion_pdf(
+                        entrega_nombre=entrega_nombre,
+                        entrega_cargo=entrega_cargo,
+                        recibe_nombre=recibe_nombre,
+                        recibe_cargo=recibe_cargo,
+                        items=items_rows,
+                        observacion=str(getattr(movement, "notes", "") or ""),
+                        city="Quito",
+                        generated_at=getattr(movement, "fecha", None) or datetime.now(),
+                    )
+
+                    movement.acta_pdf = acta_pdf
+                    if not str(getattr(movement, "acta_filename", "") or "").strip():
+                        movement.acta_filename = "acta_entrega_recepcion.pdf"
+                    movement.save()
+
             if not acta_pdf:
                 return api_response(
                     success=False,
