@@ -576,6 +576,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 		)
 
 		selected_count_txt = ft.Text("", color=ThemeColors.TEXT_SECONDARY)
+		visible_count_txt = ft.Text("", color=ThemeColors.TEXT_SECONDARY)
 
 		def _item_label(it: dict) -> str:
 			codigo = str(it.get("codigo") or "---")
@@ -583,14 +584,31 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			serial = str(it.get("serial") or "---")
 			return f"{codigo} | {nombre} | Serie: {serial}"
 
+		def _item_haystack(it: dict) -> str:
+			codigo = str(it.get("codigo") or "").strip().lower()
+			nombre = str(it.get("nombre") or "").strip().lower()
+			serial = str(it.get("serial") or "").strip().lower()
+			return f"{codigo} {nombre} {serial}"
+
 		items_check_column = ft.Column(spacing=6, height=220, scroll=ft.ScrollMode.AUTO)
+		item_filter_state = {"items": list(selectable_items)}
+
+		item_search_tf = ft.TextField(
+			hint_text="Buscar item por código, nombre o serie...",
+			prefix_icon=ft.icons.SEARCH,
+			width=500,
+			**JetBrainsTheme.input_style(),
+		)
 
 		def _refresh_selected_count():
 			selected_count_txt.value = f"Items seleccionados: {len(selected_item_ids)}"
 
+		def _refresh_visible_count():
+			visible_count_txt.value = f"Mostrando: {len(item_filter_state['items'])}/{len(selectable_items)}"
+
 		def _render_item_checkboxes():
 			items_check_column.controls.clear()
-			for it in selectable_items:
+			for it in item_filter_state["items"]:
 				iid = str(it.get("id"))
 				chk = ft.Checkbox(
 					label=_item_label(it),
@@ -608,6 +626,19 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 				chk.on_change = _on_change
 				items_check_column.controls.append(chk)
 			_refresh_selected_count()
+			_refresh_visible_count()
+
+		def _apply_item_search(query: str):
+			normalized_query = (query or "").strip().lower()
+			if not normalized_query:
+				item_filter_state["items"] = list(selectable_items)
+			else:
+				item_filter_state["items"] = [
+					it for it in selectable_items
+					if normalized_query in _item_haystack(it)
+				]
+			_render_item_checkboxes()
+			_safe_page_update()
 
 		def _select_all_items(_):
 			selected_item_ids.clear()
@@ -620,6 +651,8 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 			selected_item_ids.clear()
 			_render_item_checkboxes()
 			_safe_page_update()
+
+		item_search_tf.on_change = lambda e: _apply_item_search(e.control.value)
 
 		_render_item_checkboxes()
 
@@ -661,11 +694,12 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 				content=ft.Column(
 					[
 						ft.Text("Selecciona item o items a entregar", color=ThemeColors.TEXT_SECONDARY),
+						item_search_tf,
 						ft.Row(
 							[
 								ft.TextButton("Seleccionar todos", on_click=_select_all_items),
 								ft.TextButton("Limpiar seleccion", on_click=_clear_selected_items),
-								selected_count_txt,
+								ft.Row([visible_count_txt, selected_count_txt], spacing=14),
 							],
 							alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
 						),
