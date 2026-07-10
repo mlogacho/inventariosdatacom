@@ -1,3 +1,4 @@
+import base64
 import flet as ft
 import threading
 import urllib.parse
@@ -5,7 +6,7 @@ from core.theme import ThemeColors, JetBrainsTheme
 from components.status_badge import status_badge
 from components.stats_card import stats_card
 from components.timeline import asset_timeline
-from services.movement_service import list_movements, get_movement_stats, get_asset_history
+from services.movement_service import list_movements, get_movement_stats, get_asset_history, get_movement_acta_pdf_content
 from core.session import Session
 import os
 from services.item_service import list_items
@@ -322,23 +323,33 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                     has_acta_available = bool(movement_id)
 
                     def _download_acta(_e=None, current_movement_id=movement_id):
-                        """Abre ACTA PDF en nueva pestaña usando URL directa con token."""
-                        try:
-                            public_api = os.getenv(
-                                "PUBLIC_API_BASE_URL",
-                                "http://10.11.121.101:8070/api",
-                            ).rstrip("/")
-                            token = str(Session.token or "").strip()
-                            url = (
-                                f"{public_api}/inventory/movements/"
-                                f"{urllib.parse.quote(current_movement_id, safe='')}/acta-pdf/"
-                            )
-                            if token:
-                                url = f"{url}?token={urllib.parse.quote(token, safe='')}"
-                            show_snack(f"Abriendo ACTA...")
-                            page.launch_url(url)
-                        except Exception as ex:
-                            show_snack(f"Error al abrir ACTA: {ex}", True)
+                        show_snack("Preparando ACTA...")
+
+                        def _worker():
+                            try:
+                                pdf_bytes = get_movement_acta_pdf_content(current_movement_id)
+                                pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
+                                # Blob URL: no usa window.open(), funciona en Firefox
+                                js = (
+                                    "(function(){"
+                                    "var b=atob('" + pdf_b64 + "');"
+                                    "var n=new Uint8Array(b.length);"
+                                    "for(var i=0;i<b.length;i++)n[i]=b.charCodeAt(i);"
+                                    "var bl=new Blob([n],{type:'application/pdf'});"
+                                    "var u=URL.createObjectURL(bl);"
+                                    "var a=document.createElement('a');"
+                                    "a.href=u;a.target='_blank';a.download='acta_entrega_recepcion.pdf';"
+                                    "document.body.appendChild(a);a.click();"
+                                    "document.body.removeChild(a);"
+                                    "setTimeout(function(){URL.revokeObjectURL(u);},2000);"
+                                    "})();"
+                                )
+                                page.eval_js(js)
+                                show_snack("ACTA descargada")
+                            except Exception as ex:
+                                show_snack(f"Error al descargar ACTA: {ex}", True)
+
+                        threading.Thread(target=_worker, daemon=True).start()
 
                     # Avatar inicial del responsable
                     avatar = ft.Container(
