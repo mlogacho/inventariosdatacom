@@ -126,7 +126,7 @@ def movement_detail_view(page, item, go_menu):
                     show_snack("Generando ACTA...")
                     pdf_path = download_acta_entrega_recepcion(payload)
                     webbrowser.open(f"file://{pdf_path}")
-                    show_snack("ACTA generada correctamente")
+                    show_snack(f"ACTA generada y guardada en: {pdf_path}")
                 except Exception as ex:
                     show_snack(f"Error generando ACTA: {ex}", True)
 

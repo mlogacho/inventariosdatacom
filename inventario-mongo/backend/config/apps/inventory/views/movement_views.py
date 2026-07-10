@@ -17,8 +17,10 @@ import mongoengine as me
 
 from config.apps.inventory.models.item import Item
 from config.apps.inventory.models.movement import Movement
+from config.apps.inventory.models.movement import OperationType
 from config.apps.inventory.serializers.movement_serializer import MovementSerializer
 from config.apps.inventory.services.acta_entrega_recepcion_service import generate_acta_entrega_recepcion_pdf
+from config.apps.users.models.user import User
 from config.apps.users.permissions.rbac_permission import DRFRBACPermission
 from config.apps.users.services.crm_sso_service import CRMServiceError, get_crm_active_users
 from config.utils.api_response import api_response
@@ -358,6 +360,7 @@ class MovementActaEntregaRecepcionView(APIView):
                 normalized_ids.append(item_id)
 
             items_rows = []
+            items_for_audit = []
 
             if normalized_ids:
                 selected_items = []
@@ -377,6 +380,7 @@ class MovementActaEntregaRecepcionView(APIView):
                     )
 
                 for it in selected_items:
+                    items_for_audit.append(it)
                     items_rows.append(
                         {
                             "detalle": it.nombre,
@@ -415,6 +419,7 @@ class MovementActaEntregaRecepcionView(APIView):
                     it = item_map.get(str(mov.item.id))
                     if not it:
                         continue
+                    items_for_audit.append(it)
                     items_rows.append(
                         {
                             "detalle": it.nombre,
@@ -449,6 +454,52 @@ class MovementActaEntregaRecepcionView(APIView):
                 city="Quito",
                 generated_at=datetime.now(),
             )
+
+            responsable_user = request.user if isinstance(request.user, User) else None
+            if not responsable_user:
+                req_username = str(getattr(request.user, "username", "") or "").strip()
+                if req_username:
+                    responsable_user = User.objects(username=req_username, is_active=True).first()
+
+            if responsable_user:
+                client_ip = _get_client_ip(request)
+                notes_prefix = "ACTA ENTREGA-RECEPCION"
+                if observacion:
+                    notes_prefix = f"{notes_prefix}: {observacion}"
+
+                for it in items_for_audit:
+                    estado_actual = str(getattr(it, "estado", "") or "N/D")
+                    Movement(
+                        item=it,
+                        tipo_movimiento=OperationType.AJUSTE,
+                        fecha=datetime.now(timezone.utc),
+                        responsable=responsable_user,
+                        origen={
+                            "tipo": "ACTA",
+                            "estado": estado_actual,
+                            "ubicacion": getattr(it, "ubicacion_nombre", "") or "---",
+                            "cliente": getattr(it, "cliente_nombre", "") or "---",
+                        },
+                        destino={
+                            "tipo": "ACTA",
+                            "estado": estado_actual,
+                            "ubicacion": getattr(it, "ubicacion_nombre", "") or "---",
+                            "cliente": getattr(it, "cliente_nombre", "") or "---",
+                            "recibe_user_id": recibe_user_id,
+                            "recibe_nombre": recibe_nombre,
+                        },
+                        estado_anterior={"estado": estado_actual},
+                        estado_nuevo={"estado": estado_actual},
+                        ip_address=client_ip,
+                        module_source="ACTA_ENTREGA_RECEPCION",
+                        notes=notes_prefix,
+                        ot_id=str(getattr(it, "ot_id", "") or ""),
+                        previous_quantity=1,
+                        new_quantity=1,
+                        delta=0,
+                    ).save()
+            else:
+                logger.warning("No se pudo registrar movimiento de ACTA: usuario responsable no resuelto")
 
             response = HttpResponse(pdf_bytes, content_type="application/pdf")
             response["Content-Disposition"] = 'attachment; filename="acta_entrega_recepcion.pdf"'

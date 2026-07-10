@@ -1,8 +1,10 @@
 from core.api_client import APIClient
 from core.session import Session
 
+from datetime import datetime
 import os
 import tempfile
+from pathlib import Path
 
 import requests
 
@@ -48,6 +50,22 @@ def download_acta_entrega_recepcion(payload: dict | None = None) -> str:
     resp = requests.post(url, json=payload, headers=headers, timeout=45)
     resp.raise_for_status()
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf", prefix="acta_entrega_recepcion_") as tmp:
-        tmp.write(resp.content)
-        return tmp.name
+    download_dir = Path.home() / "Downloads" / "InventariosDatacom" / "Actas"
+    download_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    target_path = download_dir / f"acta_entrega_recepcion_{timestamp}.pdf"
+
+    # Si existe por colision de segundo, cae a un archivo temporal en la misma carpeta.
+    if target_path.exists():
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=".pdf",
+            prefix=f"acta_entrega_recepcion_{timestamp}_",
+            dir=str(download_dir),
+        ) as tmp:
+            tmp.write(resp.content)
+            return tmp.name
+
+    target_path.write_bytes(resp.content)
+    return str(target_path)

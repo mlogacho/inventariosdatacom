@@ -678,7 +678,7 @@ def kardex_view(page: ft.Page, navigate, **kwargs):
 					show_snack("Generando ACTA DE ENTREGA - RECEPCION...")
 					pdf_path = download_acta_entrega_recepcion(payload)
 					webbrowser.open(f"file://{pdf_path}")
-					show_snack("ACTA generada correctamente")
+					show_snack(f"ACTA generada y guardada en: {pdf_path}")
 				except Exception as ex:
 					show_snack(f"Error al generar acta: {ex}", is_error=True)
 
