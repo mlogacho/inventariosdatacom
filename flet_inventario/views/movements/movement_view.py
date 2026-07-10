@@ -324,17 +324,14 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                     movement_id = str(m.get("id") or "").strip()
 
                     def _download_acta(_e=None, current_movement_id=movement_id):
-                        def _worker():
-                            try:
-                                show_snack("Preparando ACTA del movimiento...")
-                                pdf_content = get_movement_acta_pdf_content(current_movement_id)
-                                pdf_b64 = base64.b64encode(pdf_content).decode("ascii")
-                                page.launch_url(f"data:application/pdf;base64,{pdf_b64}")
-                                show_snack("ACTA lista para descarga/visualizacion")
-                            except Exception as ex:
-                                show_snack(f"No se pudo descargar el ACTA: {ex}", True)
-
-                        threading.Thread(target=_worker, daemon=True).start()
+                        try:
+                            show_snack("Preparando ACTA del movimiento...")
+                            pdf_content = get_movement_acta_pdf_content(current_movement_id)
+                            pdf_b64 = base64.b64encode(pdf_content).decode("ascii")
+                            page.launch_url(f"data:application/pdf;base64,{pdf_b64}")
+                            show_snack("ACTA lista para descarga/visualizacion")
+                        except Exception as ex:
+                            show_snack(f"No se pudo descargar el ACTA: {ex}", True)
 
                     # Avatar inicial del responsable
                     avatar = ft.Container(
