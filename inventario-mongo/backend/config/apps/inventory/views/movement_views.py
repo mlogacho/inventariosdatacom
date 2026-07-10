@@ -520,12 +520,36 @@ class MovementActaEntregaRecepcionView(APIView):
 
 
 class MovementActaPDFDownloadView(APIView):
-    """Descarga el PDF del ACTA asociado a un movimiento."""
+    """Descarga el PDF del ACTA asociado a un movimiento.
+    Soporta autenticación por Bearer header o query param ?token= para
+    permitir apertura directa desde el navegador.
+    """
 
-    permission_classes = [DRFRBACPermission]
+    permission_classes = []  # auth manual: soporta Bearer header Y ?token= query param
     resource_name = "movement"
 
+    def _get_authenticated_user(self, request):
+        """Resuelve usuario desde Bearer header o ?token= query param."""
+        from config.apps.users.services.jwt_service import decode_access_token
+        from config.apps.users.models.user import User as UserModel
+
+        header = request.headers.get("Authorization", "")
+        if header.startswith("Bearer "):
+            token = header[7:]
+        else:
+            token = str(request.query_params.get("token") or "").strip()
+
+        if not token:
+            return None
+        payload = decode_access_token(token)
+        if not payload:
+            return None
+        return UserModel.objects(id=payload.get("user_id"), is_active=True).first()
+
     def get(self, request, movement_id):
+        user = self._get_authenticated_user(request)
+        if not user:
+            return HttpResponse("No autorizado", status=403, content_type="text/plain")
         try:
             movement = Movement.objects(id=movement_id).first()
             if not movement:

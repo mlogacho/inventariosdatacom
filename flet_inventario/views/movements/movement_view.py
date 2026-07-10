@@ -5,7 +5,9 @@ from core.theme import ThemeColors, JetBrainsTheme
 from components.status_badge import status_badge
 from components.stats_card import stats_card
 from components.timeline import asset_timeline
-from services.movement_service import list_movements, get_movement_stats, get_asset_history, get_movement_acta_pdf_content
+from services.movement_service import list_movements, get_movement_stats, get_asset_history
+from core.session import Session
+import os
 from services.item_service import list_items
 from services.store_service import list_stores
 
@@ -325,11 +327,17 @@ def movement_view(page: ft.Page, navigate, **kwargs):
 
                     def _download_acta(_e=None, current_movement_id=movement_id):
                         try:
-                            show_snack("Preparando ACTA del movimiento...")
-                            pdf_content = get_movement_acta_pdf_content(current_movement_id)
-                            pdf_b64 = base64.b64encode(pdf_content).decode("ascii")
-                            page.launch_url(f"data:application/pdf;base64,{pdf_b64}")
-                            show_snack("ACTA lista para descarga/visualizacion")
+                            # URL pública del API: soporta descarga directa en el navegador
+                            public_api = os.getenv(
+                                "PUBLIC_API_BASE_URL",
+                                "http://10.11.121.101:8070/api",
+                            ).rstrip("/")
+                            token = str(Session.token or "").strip()
+                            url = f"{public_api}/inventory/movements/{current_movement_id}/acta-pdf/"
+                            if token:
+                                url = f"{url}?token={token}"
+                            page.launch_url(url)
+                            show_snack("Descargando ACTA...")
                         except Exception as ex:
                             show_snack(f"No se pudo descargar el ACTA: {ex}", True)
 
