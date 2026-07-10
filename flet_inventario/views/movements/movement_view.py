@@ -312,41 +312,24 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                     fecha_raw = m.get("fecha", "---")
                     fecha_str = (fecha_raw[:16].replace("T", " ")
                                  if len(fecha_raw) >= 16 else fecha_raw)
-                    has_acta_pdf = bool(m.get("has_acta_pdf"))
-                    notes_text = str(m.get("notes") or "").strip().upper()
-                    destino_estado = str(destino.get("estado") or "").strip().upper()
-                    has_recibe = bool(str(destino.get("recibe_user_id") or "").strip() or str(destino.get("recibe_nombre") or "").strip())
                     movement_id = str(m.get("id") or "").strip()
-                    # Botón PDF activo para cualquier movimiento con ID válido;
-                    # el backend determina si puede generar/devolver el ACTA.
-                    has_acta_available = bool(movement_id)
 
-                    def _download_acta(_e=None, current_movement_id=movement_id):
-                        """Descarga ACTA usando URL con token.
-                        web_window_name='acta_pdf' abre una ventana/tab nombrada;
-                        Firefox permite esto al ser un attachment (no popup).
-                        """
-                        try:
-                            public_api = os.getenv(
-                                "PUBLIC_API_BASE_URL",
-                                "http://10.11.121.101:8070/api",
-                            ).rstrip("/")
-                            token = str(Session.token or "").strip()
-                            url = (
-                                f"{public_api}/inventory/movements/"
-                                f"{urllib.parse.quote(current_movement_id, safe='')}/acta-pdf/"
-                            )
-                            if token:
-                                url = f"{url}?token={urllib.parse.quote(token, safe='')}"
-                            # web_window_name="acta_pdf": si Firefox bloqueó la primera vez
-                            # reutiliza la misma ventana/tab en clics siguientes.
-                            page.launch_url(
-                                url,
-                                web_window_name="acta_pdf",
-                            )
-                            show_snack("Abriendo ACTA (si Firefox bloqueó el popup, autorízalo en la barra de dirección)")
-                        except Exception as ex:
-                            show_snack(f"Error al abrir ACTA: {ex}", True)
+                    # Construir la URL del ACTA al renderizar la fila.
+                    # Usar url= en el botón crea un <a href> real en Firefox,
+                    # sin window.open(), por lo que nunca se bloquea como popup.
+                    _public_api = os.getenv(
+                        "PUBLIC_API_BASE_URL",
+                        "http://10.11.121.101:8070/api",
+                    ).rstrip("/")
+                    _token = str(Session.token or "").strip()
+                    if movement_id and _token:
+                        acta_url = (
+                            f"{_public_api}/inventory/movements/"
+                            f"{urllib.parse.quote(movement_id, safe='')}/acta-pdf/"
+                            f"?token={urllib.parse.quote(_token, safe='')}"
+                        )
+                    else:
+                        acta_url = None
 
                     # Avatar inicial del responsable
                     avatar = ft.Container(
@@ -416,12 +399,16 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                                             item_data=it
                                         )
                                     ),
+                                    # url= crea un <a href> real en el navegador,
+                                    # no usa window.open() — nunca se bloquea como popup
                                     ft.IconButton(
                                         icon=ft.icons.PICTURE_AS_PDF,
-                                        icon_color=ThemeColors.ACCENT_BLUE,
+                                        icon_color=ThemeColors.ACCENT_BLUE if acta_url else ThemeColors.TEXT_SECONDARY,
                                         icon_size=20,
-                                        tooltip="Descargar ACTA de este movimiento",
-                                        on_click=_download_acta,
+                                        tooltip="Descargar ACTA" if acta_url else "Sin sesión activa",
+                                        url=acta_url,
+                                        url_target="_blank",
+                                        disabled=not bool(acta_url),
                                     ),
                                 ], spacing=2)),
                             ]
