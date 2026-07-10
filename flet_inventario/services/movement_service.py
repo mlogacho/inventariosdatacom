@@ -94,3 +94,21 @@ def download_movement_acta_pdf(movement_id: str) -> str:
     target_path = download_dir / f"acta_movimiento_{movement_id}_{timestamp}.pdf"
     target_path.write_bytes(resp.content)
     return str(target_path)
+
+
+def get_movement_acta_pdf_content(movement_id: str) -> bytes:
+    """Obtiene el contenido PDF de ACTA asociada a un movimiento."""
+    movement_id = str(movement_id or "").strip()
+    if not movement_id:
+        raise ValueError("movement_id es requerido")
+
+    base_url = os.getenv("API_BASE_URL", "http://localhost:8000/api").rstrip("/")
+    url = f"{base_url}/inventory/movements/{movement_id}/acta-pdf/"
+
+    headers = {}
+    if Session.token:
+        headers["Authorization"] = f"Bearer {Session.token}"
+
+    resp = requests.get(url, headers=headers, timeout=45)
+    resp.raise_for_status()
+    return resp.content

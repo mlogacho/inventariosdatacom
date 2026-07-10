@@ -1,11 +1,11 @@
+import base64
 import flet as ft
 import threading
-import webbrowser
 from core.theme import ThemeColors, JetBrainsTheme
 from components.status_badge import status_badge
 from components.stats_card import stats_card
 from components.timeline import asset_timeline
-from services.movement_service import list_movements, get_movement_stats, get_asset_history, download_movement_acta_pdf
+from services.movement_service import list_movements, get_movement_stats, get_asset_history, get_movement_acta_pdf_content
 from services.item_service import list_items
 from services.store_service import list_stores
 
@@ -326,10 +326,11 @@ def movement_view(page: ft.Page, navigate, **kwargs):
                     def _download_acta(_e=None, current_movement_id=movement_id):
                         def _worker():
                             try:
-                                show_snack("Descargando ACTA del movimiento...")
-                                pdf_path = download_movement_acta_pdf(current_movement_id)
-                                webbrowser.open(f"file://{pdf_path}")
-                                show_snack(f"ACTA descargada en: {pdf_path}")
+                                show_snack("Preparando ACTA del movimiento...")
+                                pdf_content = get_movement_acta_pdf_content(current_movement_id)
+                                pdf_b64 = base64.b64encode(pdf_content).decode("ascii")
+                                page.launch_url(f"data:application/pdf;base64,{pdf_b64}")
+                                show_snack("ACTA lista para descarga/visualizacion")
                             except Exception as ex:
                                 show_snack(f"No se pudo descargar el ACTA: {ex}", True)
 
